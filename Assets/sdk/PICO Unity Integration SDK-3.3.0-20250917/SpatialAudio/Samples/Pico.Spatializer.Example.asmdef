@@ -1,0 +1,21 @@
+{
+    "name": "Pico.Spatializer.Example",
+    "rootNamespace": "",
+    "references": [
+        "Pico.Spatializer"
+    ],
+    "includePlatforms": [
+        "Android",
+        "Editor",
+        "macOSStandalone",
+        "WindowsStandalone64"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
