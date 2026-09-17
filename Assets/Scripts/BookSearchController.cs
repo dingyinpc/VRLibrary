@@ -18,6 +18,8 @@ public class BookSearchController : MonoBehaviour
     public GameObject panelRoot;
     public GameObject[] resultPool;   // 预建的 6 条结果条目(激活/停用复用)
     public XROrigin origin;
+    [Tooltip("打开检索时临时隐藏的画布(如导览屏),避免视觉重叠")]
+    public GameObject canvasToHide;
 
     int usedResults;
 
@@ -30,8 +32,18 @@ public class BookSearchController : MonoBehaviour
 
     void OnDestroy() { if (Instance == this) Instance = null; }
 
-    public void Show() { panelRoot.SetActive(true); if (inputField != null) inputField.text = ""; ClearResults(); }
-    public void Hide() { panelRoot.SetActive(false); }
+    public void Show()
+    {
+        panelRoot.SetActive(true);
+        if (canvasToHide != null) canvasToHide.SetActive(false);
+        if (inputField != null) inputField.text = "";
+        ClearResults();
+    }
+    public void Hide()
+    {
+        panelRoot.SetActive(false);
+        if (canvasToHide != null) canvasToHide.SetActive(true);
+    }
 
     /// <summary>搜索按钮调用。</summary>
     public void DoSearch()
