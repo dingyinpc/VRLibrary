@@ -29,6 +29,7 @@ public class LibraryBook : MonoBehaviour
     void OnEnable()
     {
         if (grab == null) grab = GetComponent<XRGrabInteractable>();
+        if (grab == null) { Debug.LogWarning("[LibraryBook] 缺少 XR Grab Interactable,跳过事件绑定:" + gameObject.name); return; }
         grab.hoverEntered.AddListener(OnHoverEntered);
         grab.hoverExited.AddListener(OnHoverExited);
         grab.selectEntered.AddListener(OnSelectEntered);
@@ -37,6 +38,7 @@ public class LibraryBook : MonoBehaviour
 
     void OnDisable()
     {
+        if (grab == null) return;
         grab.hoverEntered.RemoveListener(OnHoverEntered);
         grab.hoverExited.RemoveListener(OnHoverExited);
         grab.selectEntered.RemoveListener(OnSelectEntered);
@@ -62,7 +64,14 @@ public class LibraryBook : MonoBehaviour
     /// <summary>抓取状态下扣扳机 = 打开阅读面板。</summary>
     private void OnActivated(ActivateEventArgs args)
     {
-        if (BookReader.Instance != null)
-            BookReader.Instance.Open(this);
+        // 兜底:面板未激活时 Instance 为空,从场景中找回(含未激活对象)
+        var reader = BookReader.Instance;
+        if (reader == null)
+        {
+            var found = FindObjectOfType<BookReader>(true);
+            if (found == null) { Debug.LogWarning("[LibraryBook] 场景中没有 BookReader 组件,无法打开阅读面板"); return; }
+            BookReader.Instance = found;   // 公开静态字段,直接接管
+        }
+        reader.Open(this);
     }
 }
