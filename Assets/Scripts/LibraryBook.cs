@@ -14,6 +14,8 @@ public class LibraryBook : MonoBehaviour
     public string title = "未命名图书";
     public string author = "佚名";
     [TextArea] public string summary = "详情待录入:馆藏数据后续由使用者提供。";
+    [Tooltip("书架槽位编号,如 A1-2-05(区-架-层-槽)")]
+    public string slotCode = "";
 
     private XRGrabInteractable grab;
     private Vector3 baseScale;

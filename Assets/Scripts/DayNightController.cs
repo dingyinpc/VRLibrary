@@ -1,127 +1,115 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 智能图书馆 · 灯光开关 + 日夜切换
-/// - ToggleLights():室内人工照明总开关(非平行光的灯全部关/开 + 灯带/吊顶光格自发光同步熄灭/点亮,
-///   霓虹装饰条不受影响,熄灯后剩"应急霓虹"氛围);
-/// - ToggleDayNight():白天/黑夜环境切换(天空盒三色+星星+星云+月亮、环境光、雾、主光强度全套切换)。
-/// 挂在中央导览台上,由导览屏两个按钮调用;夜晚参数在 Awake 自动缓存(以场景原始状态为准)。
+/// 智能图书馆 · 灯光开关 + 日夜切换(带渐变)
+/// - ToggleLights():室内人工照明总开关(灯带自发光同步,霓虹装饰保留应急氛围);
+/// - ToggleDayNight():白天/黑夜渐变切换(约 2.5 秒平滑过渡:天空盒三色/星/月、环境光、雾、主光)。
 /// </summary>
 public class DayNightController : MonoBehaviour
 {
     public static DayNightController Instance;
 
-    [Header("灯带/吊顶光格材质(开关灯时熄灭/点亮)")]
+    [Header("灯带材质")]
     public Material lightBarMat;
-    [Header("灯带点亮时的自发光颜色(HDR)")]
     public Color lightBarOn = new Color(1.6f, 1.8f, 2.2f);
     public Color lightBarOff = new Color(0.04f, 0.05f, 0.07f);
+    public float blendSeconds = 2.5f;
 
     public bool lightsOn = true;
     public bool isDay = false;
 
-    // 夜晚缓存
-    Color nAmbient, nFogCol, nSunCol;
-    float nFogDen, nSunI;
-    Color nZenith, nHorizon, nGlowCol, nMoonCol, nLineCol;
-    float nGlow, nStars, nStarB, nNebula, nMoonSize, nMoonI;
+    // 夜(初始)与昼两组参数 + 当前插值缓存
+    Color nAmb, nFogC, nSunC, nZen, nHor, nGlowC, nMoonC;
+    float nFogD, nSunI, nGlow, nStars, nStarB, nNeb, nMoonS, nMoonI;
+    readonly Color dAmb = new Color(0.42f, 0.50f, 0.60f);
+    readonly Color dFogC = new Color(0.55f, 0.65f, 0.78f);
+    readonly Color dSunC = new Color(1f, 0.97f, 0.9f);
+    readonly Color dZen = new Color(0.30f, 0.52f, 0.85f);
+    readonly Color dHor = new Color(0.62f, 0.80f, 0.95f);
+    readonly Color dGlowC = new Color(1f, 1f, 1f);
+    readonly Color dMoonC = new Color(1f, 0.98f, 0.9f);
+    const float dFogD = 0.005f, dSunI = 1.2f, dGlow = 0.4f, dStars = 0f, dStarB = 0f, dNeb = 0f, dMoonS = 0.06f, dMoonI = 4f;
+
     Material sky;
+    Coroutine blending;
 
     void Awake()
     {
         Instance = this;
         sky = RenderSettings.skybox;
-        nAmbient = RenderSettings.ambientLight;
-        nFogCol = RenderSettings.fogColor;
-        nFogDen = RenderSettings.fogDensity;
+        nAmb = RenderSettings.ambientLight;
+        nFogC = RenderSettings.fogColor;
+        nFogD = RenderSettings.fogDensity;
         var sun = RenderSettings.sun;
-        if (sun != null) { nSunI = sun.intensity; nSunCol = sun.color; }
-        if (sky != null) {
-            nZenith = sky.GetColor("_ZenithColor");
-            nHorizon = sky.GetColor("_HorizonColor");
-            nGlowCol = sky.GetColor("_HorizonGlowColor");
-            nGlow = sky.GetFloat("_HorizonGlow");
-            nStars = sky.GetFloat("_StarDensity");
-            nStarB = sky.GetFloat("_StarBrightness");
-            nNebula = sky.GetFloat("_NebulaIntensity");
-            nMoonSize = sky.GetFloat("_MoonSize");
-            nMoonI = sky.GetFloat("_MoonIntensity");
-            nMoonCol = sky.GetColor("_MoonColor");
-            nLineCol = sky.GetColor("_HorizonLineColor");
+        if (sun != null) { nSunI = sun.intensity; nSunC = sun.color; }
+        if (sky != null)
+        {
+            nZen = sky.GetColor("_ZenithColor"); nHor = sky.GetColor("_HorizonColor");
+            nGlowC = sky.GetColor("_HorizonGlowColor"); nGlow = sky.GetFloat("_HorizonGlow");
+            nStars = sky.GetFloat("_StarDensity"); nStarB = sky.GetFloat("_StarBrightness");
+            nNeb = sky.GetFloat("_NebulaIntensity"); nMoonS = sky.GetFloat("_MoonSize");
+            nMoonI = sky.GetFloat("_MoonIntensity"); nMoonC = sky.GetColor("_MoonColor");
         }
     }
 
-    void OnDestroy()
-    {
-        if (Instance == this) Instance = null;
-    }
+    void OnDestroy() { if (Instance == this) Instance = null; }
 
-    /// <summary>室内灯光总开关(全部非平行光灯 + 灯带自发光)。</summary>
     public void ToggleLights()
     {
         lightsOn = !lightsOn;
-        var lights = FindObjectsOfType<Light>();
-        foreach (var l in lights)
+        foreach (var l in FindObjectsOfType<Light>())
             if (l.type != LightType.Directional) l.enabled = lightsOn;
         if (lightBarMat != null)
-        {
             lightBarMat.SetColor("_EmissionColor", lightsOn ? lightBarOn : lightBarOff);
-#if UNITY_EDITOR
-            UnityEditor.EditorUtility.SetDirty(lightBarMat);
-#endif
-        }
         Debug.Log("[DayNight] 室内灯光 = " + (lightsOn ? "开" : "关"));
     }
 
-    /// <summary>白天/黑夜切换。</summary>
     public void ToggleDayNight()
     {
         isDay = !isDay;
-        if (isDay) ApplyDay(); else ApplyNight();
-        Debug.Log("[DayNight] 当前时段 = " + (isDay ? "白天" : "夜晚"));
+        if (blending != null) StopCoroutine(blending);
+        blending = StartCoroutine(Blend(isDay ? 0f : 1f, isDay ? 1f : 0f));
+        Debug.Log("[DayNight] 切换 → " + (isDay ? "白天" : "夜晚") + "(渐变 " + blendSeconds + "s)");
     }
 
-    void ApplyDay()
+    /// <summary>nightT: 0=白天 1=夜晚,从当前状态渐变到目标。</summary>
+    IEnumerator Blend(float from, float to)
     {
-        RenderSettings.ambientLight = new Color(0.42f, 0.50f, 0.60f);
-        RenderSettings.fogColor = new Color(0.55f, 0.65f, 0.78f);
-        RenderSettings.fogDensity = 0.005f;
+        // 记住起点实际值(渐变中途再切也平滑)
+        Color sAmb = RenderSettings.ambientLight, sFogC = RenderSettings.fogColor, sSunC = nSunC;
+        float sSunI = nSunI;
         var sun = RenderSettings.sun;
-        if (sun != null) { sun.intensity = 1.2f; sun.color = new Color(1f, 0.97f, 0.9f); }
-        if (sky != null)
+        if (sun != null) { sSunI = sun.intensity; sSunC = sun.color; }
+        float sFogD = RenderSettings.fogDensity;
+        float t = 0f;
+        while (t < 1f)
         {
-            sky.SetColor("_ZenithColor", new Color(0.30f, 0.52f, 0.85f));
-            sky.SetColor("_HorizonColor", new Color(0.62f, 0.80f, 0.95f));
-            sky.SetColor("_HorizonGlowColor", new Color(1f, 1f, 1f));
-            sky.SetFloat("_HorizonGlow", 0.4f);
-            sky.SetFloat("_StarDensity", 0f);
-            sky.SetFloat("_StarBrightness", 0f);
-            sky.SetFloat("_NebulaIntensity", 0f);
-            sky.SetFloat("_MoonSize", 0.06f);
-            sky.SetFloat("_MoonIntensity", 4f);
-            sky.SetColor("_MoonColor", new Color(1f, 0.98f, 0.9f));
+            t = Mathf.Min(1f, t + Time.deltaTime / Mathf.Max(0.05f, blendSeconds));
+            float k = Mathf.SmoothStep(from, to, t);
+            RenderSettings.ambientLight = Color.Lerp(dAmb, nAmb, k);
+            RenderSettings.fogColor = Color.Lerp(dFogC, nFogC, k);
+            RenderSettings.fogDensity = Mathf.Lerp(dFogD, nFogD, k);
+            if (sun != null)
+            {
+                sun.intensity = Mathf.Lerp(dSunI, nSunI, k);
+                sun.color = Color.Lerp(dSunC, nSunC, k);
+            }
+            if (sky != null)
+            {
+                sky.SetColor("_ZenithColor", Color.Lerp(dZen, nZen, k));
+                sky.SetColor("_HorizonColor", Color.Lerp(dHor, nHor, k));
+                sky.SetColor("_HorizonGlowColor", Color.Lerp(dGlowC, nGlowC, k));
+                sky.SetFloat("_HorizonGlow", Mathf.Lerp(dGlow, nGlow, k));
+                sky.SetFloat("_StarDensity", Mathf.Lerp(dStars, nStars, k));
+                sky.SetFloat("_StarBrightness", Mathf.Lerp(dStarB, nStarB, k));
+                sky.SetFloat("_NebulaIntensity", Mathf.Lerp(dNeb, nNeb, k));
+                sky.SetFloat("_MoonSize", Mathf.Lerp(dMoonS, nMoonS, k));
+                sky.SetFloat("_MoonIntensity", Mathf.Lerp(dMoonI, nMoonI, k));
+                sky.SetColor("_MoonColor", Color.Lerp(dMoonC, nMoonC, k));
+            }
+            yield return null;
         }
-    }
-
-    void ApplyNight()
-    {
-        RenderSettings.ambientLight = nAmbient;
-        RenderSettings.fogColor = nFogCol;
-        RenderSettings.fogDensity = nFogDen;
-        var sun = RenderSettings.sun;
-        if (sun != null) { sun.intensity = nSunI; sun.color = nSunCol; }
-        if (sky != null)
-        {
-            sky.SetColor("_ZenithColor", nZenith);
-            sky.SetColor("_HorizonColor", nHorizon);
-            sky.SetColor("_HorizonGlowColor", nGlowCol);
-            sky.SetFloat("_HorizonGlow", nGlow);
-            sky.SetFloat("_StarDensity", nStars);
-            sky.SetFloat("_StarBrightness", nStarB);
-            sky.SetFloat("_NebulaIntensity", nNebula);
-            sky.SetFloat("_MoonSize", nMoonSize);
-            sky.SetFloat("_MoonIntensity", nMoonI);
-            sky.SetColor("_MoonColor", nMoonCol);
-        }
+        blending = null;
     }
 }
