@@ -71,31 +71,25 @@ namespace UnityCopilot
         private static void Start()
         {
             if (_running) { return; }
-            try
+            // 多窗口方案:配置端口被占用(其他 Unity 实例已绑定)时,依次 +1 重试,自动落到空闲端口
+            for (int attempt = 0; attempt < 10; attempt++)
             {
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _running = true;
-                _serverThread = new Thread(AcceptLoop) { IsBackground = true, Name = "UnityCopilot-WS" };
-                _serverThread.Start();
-                Debug.Log($"[UnityCopilot] Bridge listening on ws://127.0.0.1:{Port}");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[UnityCopilot] Failed to start bridge: {ex.Message}");
-                if (!_retryScheduled)
+                int tryPort = Port + attempt;
+                try
                 {
-                    _retryScheduled = true;
-                    EditorApplication.delayCall += () => EditorApplication.delayCall += RetryStart;
+                    _listener = new TcpListener(IPAddress.Loopback, tryPort);
+                    _listener.Start();
+                    Port = tryPort;
+                    _running = true;
+                    _serverThread = new Thread(AcceptLoop) { IsBackground = true, Name = "UnityCopilot-WS" };
+                    _serverThread.Start();
+                    Debug.Log($"[UnityCopilot] Bridge listening on ws://127.0.0.1:{Port}");
+                    return;
                 }
+                catch (SocketException) { /* 端口被占用 → 试下一个 */ }
+                catch (Exception ex) { Debug.LogWarning($"[UnityCopilot] Port {tryPort} error: {ex.Message}"); }
             }
-        }
-
-        private static void RetryStart()
-        {
-            _retryScheduled = false;
-            if (_running) return;
-            Start();
+            Debug.LogError($"[UnityCopilot] 端口 {Port}~{Port + 9} 全部被占用,桥接未启动。");
         }
 
         private static void Stop()
