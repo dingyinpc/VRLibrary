@@ -71502,14 +71502,13 @@ GameObject:
   - component: {fileID: 864058966}
   - component: {fileID: 864058967}
   - component: {fileID: 864058968}
-  - component: {fileID: 864058969}
   m_Layer: 0
   m_Name: CentralKiosk
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &864058965
 Transform:
   m_ObjectHideFlags: 0
@@ -71578,28 +71577,6 @@ MonoBehaviour:
   blendSeconds: 2.5
   lightsOn: 1
   isDay: 0
---- !u!114 &864058969
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 864058964}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1405d6e460355104084ab54ea8d2b7dd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  inputField: {fileID: 0}
-  panelRoot: {fileID: 864058964}
-  resultPool:
-  - {fileID: 542554353}
-  - {fileID: 1289138858}
-  - {fileID: 1590389968}
-  - {fileID: 1615537305}
-  - {fileID: 1150619454}
-  - {fileID: 400284452}
-  origin: {fileID: 1186157143}
 --- !u!1 &868480882
 GameObject:
   m_ObjectHideFlags: 0
@@ -85498,7 +85475,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   inputField: {fileID: 994854665}
   panelRoot: {fileID: 1004384735}
-  resultPool: []
+  resultPool:
+  - {fileID: 542554353}
+  - {fileID: 1289138858}
+  - {fileID: 1590389968}
+  - {fileID: 1615537305}
+  - {fileID: 1150619454}
+  - {fileID: 400284452}
   origin: {fileID: 1186157143}
 --- !u!224 &1004384737
 RectTransform:
@@ -111606,14 +111589,14 @@ Material:
   m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords:
-  - _EMISSION
+  m_ValidKeywords: []
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
+  stringTagMap:
+    RenderType: Opaque
   disabledShaderPasses: []
   m_LockedProperties: 
   m_SavedProperties:
@@ -111709,7 +111692,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0, g: 0, b: 0, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0, g: 0, b: 0, a: 1}
     - _EmissionColor: {r: 0, g: 2.4, b: 3, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []

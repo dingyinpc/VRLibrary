@@ -69,44 +69,74 @@ public class DayNightController : MonoBehaviour
     {
         isDay = !isDay;
         if (blending != null) StopCoroutine(blending);
-        blending = StartCoroutine(Blend(isDay ? 0f : 1f, isDay ? 1f : 0f));
+        blending = StartCoroutine(Blend(isDay));
         Debug.Log("[DayNight] 切换 → " + (isDay ? "白天" : "夜晚") + "(渐变 " + blendSeconds + "s)");
     }
 
-    /// <summary>nightT: 0=白天 1=夜晚,从当前状态渐变到目标。</summary>
-    IEnumerator Blend(float from, float to)
+    /// <summary>渐变:从"当前实际状态"平滑过渡到目标时段(中途再切也无缝)。</summary>
+    IEnumerator Blend(bool toDay)
     {
-        // 记住起点实际值(渐变中途再切也平滑)
-        Color sAmb = RenderSettings.ambientLight, sFogC = RenderSettings.fogColor, sSunC = nSunC;
-        float sSunI = nSunI;
-        var sun = RenderSettings.sun;
-        if (sun != null) { sSunI = sun.intensity; sSunC = sun.color; }
+        // 捕捉当前实际值作为起点
+        Color sAmb = RenderSettings.ambientLight, sFogC = RenderSettings.fogColor;
         float sFogD = RenderSettings.fogDensity;
+        var sun = RenderSettings.sun;
+        Color sSunC = sun != null ? sun.color : Color.white;
+        float sSunI = sun != null ? sun.intensity : 1f;
+        float sZen = 0f;
+        var skyX = sky;
+        Color cZen = skyX != null ? skyX.GetColor("_ZenithColor") : Color.black;
+        Color cHor = skyX != null ? skyX.GetColor("_HorizonColor") : Color.black;
+        Color cGlowC = skyX != null ? skyX.GetColor("_HorizonGlowColor") : Color.black;
+        float cGlow = skyX != null ? skyX.GetFloat("_HorizonGlow") : 0f;
+        float cStars = skyX != null ? skyX.GetFloat("_StarDensity") : 0f;
+        float cStarB = skyX != null ? skyX.GetFloat("_StarBrightness") : 0f;
+        float cNeb = skyX != null ? skyX.GetFloat("_NebulaIntensity") : 0f;
+        float cMoonS = skyX != null ? skyX.GetFloat("_MoonSize") : 0f;
+        float cMoonI = skyX != null ? skyX.GetFloat("_MoonIntensity") : 0f;
+        Color cMoonC = skyX != null ? skyX.GetColor("_MoonColor") : Color.black;
+
+        // 目标值
+        Color tAmb = toDay ? dAmb : nAmb;
+        Color tFogC = toDay ? dFogC : nFogC;
+        float tFogD = toDay ? dFogD : nFogD;
+        Color tSunC = toDay ? dSunC : nSunC;
+        float tSunI = toDay ? dSunI : nSunI;
+        Color tZen = toDay ? dZen : nZen;
+        Color tHor = toDay ? dHor : nHor;
+        Color tGlowC = toDay ? dGlowC : nGlowC;
+        float tGlow = toDay ? dGlow : nGlow;
+        float tStars = toDay ? dStars : nStars;
+        float tStarB = toDay ? dStarB : nStarB;
+        float tNeb = toDay ? dNeb : nNeb;
+        float tMoonS = toDay ? dMoonS : nMoonS;
+        float tMoonI = toDay ? dMoonI : nMoonI;
+        Color tMoonC = toDay ? dMoonC : nMoonC;
+
         float t = 0f;
         while (t < 1f)
         {
             t = Mathf.Min(1f, t + Time.deltaTime / Mathf.Max(0.05f, blendSeconds));
-            float k = Mathf.SmoothStep(from, to, t);
-            RenderSettings.ambientLight = Color.Lerp(dAmb, nAmb, k);
-            RenderSettings.fogColor = Color.Lerp(dFogC, nFogC, k);
-            RenderSettings.fogDensity = Mathf.Lerp(dFogD, nFogD, k);
+            float k = Mathf.SmoothStep(0f, 1f, t);
+            RenderSettings.ambientLight = Color.Lerp(sAmb, tAmb, k);
+            RenderSettings.fogColor = Color.Lerp(sFogC, tFogC, k);
+            RenderSettings.fogDensity = Mathf.Lerp(sFogD, tFogD, k);
             if (sun != null)
             {
-                sun.intensity = Mathf.Lerp(dSunI, nSunI, k);
-                sun.color = Color.Lerp(dSunC, nSunC, k);
+                sun.intensity = Mathf.Lerp(sSunI, tSunI, k);
+                sun.color = Color.Lerp(sSunC, tSunC, k);
             }
-            if (sky != null)
+            if (skyX != null)
             {
-                sky.SetColor("_ZenithColor", Color.Lerp(dZen, nZen, k));
-                sky.SetColor("_HorizonColor", Color.Lerp(dHor, nHor, k));
-                sky.SetColor("_HorizonGlowColor", Color.Lerp(dGlowC, nGlowC, k));
-                sky.SetFloat("_HorizonGlow", Mathf.Lerp(dGlow, nGlow, k));
-                sky.SetFloat("_StarDensity", Mathf.Lerp(dStars, nStars, k));
-                sky.SetFloat("_StarBrightness", Mathf.Lerp(dStarB, nStarB, k));
-                sky.SetFloat("_NebulaIntensity", Mathf.Lerp(dNeb, nNeb, k));
-                sky.SetFloat("_MoonSize", Mathf.Lerp(dMoonS, nMoonS, k));
-                sky.SetFloat("_MoonIntensity", Mathf.Lerp(dMoonI, nMoonI, k));
-                sky.SetColor("_MoonColor", Color.Lerp(dMoonC, nMoonC, k));
+                skyX.SetColor("_ZenithColor", Color.Lerp(cZen, tZen, k));
+                skyX.SetColor("_HorizonColor", Color.Lerp(cHor, tHor, k));
+                skyX.SetColor("_HorizonGlowColor", Color.Lerp(cGlowC, tGlowC, k));
+                skyX.SetFloat("_HorizonGlow", Mathf.Lerp(cGlow, tGlow, k));
+                skyX.SetFloat("_StarDensity", Mathf.Lerp(cStars, tStars, k));
+                skyX.SetFloat("_StarBrightness", Mathf.Lerp(cStarB, tStarB, k));
+                skyX.SetFloat("_NebulaIntensity", Mathf.Lerp(cNeb, tNeb, k));
+                skyX.SetFloat("_MoonSize", Mathf.Lerp(cMoonS, tMoonS, k));
+                skyX.SetFloat("_MoonIntensity", Mathf.Lerp(cMoonI, tMoonI, k));
+                skyX.SetColor("_MoonColor", Color.Lerp(cMoonC, tMoonC, k));
             }
             yield return null;
         }

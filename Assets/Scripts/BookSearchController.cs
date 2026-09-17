@@ -102,7 +102,8 @@ public class BookSearchController : MonoBehaviour
         fwd.Normalize();
 
         Vector3 destPos = book.transform.position + fwd * 1.15f;
-        destPos.y = origin.transform.position.y;
+        // 二层书:落到回廊地面(书架板面 y=3.0);一层书:落回当前地面
+        destPos.y = book.transform.position.y > 2.5f ? 3.0f : origin.transform.position.y;
 
         Vector3 toBook = book.transform.position - destPos; toBook.y = 0f;
         float yaw = toBook.sqrMagnitude > 0.001f ? Mathf.Atan2(toBook.x, toBook.z) * Mathf.Rad2Deg : 0f;

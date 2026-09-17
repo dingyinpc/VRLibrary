@@ -36,6 +36,43 @@ public class BookReader : MonoBehaviour
     }
     public static readonly List<Bookmark> Bookmarks = new List<Bookmark>();
 
+    const string kPrefPrefix = "BM_";
+    /// <summary>启动时从 PlayerPrefs 恢复书签(跨应用启动保留)。</summary>
+    void LoadBookmarks()
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            string v = PlayerPrefs.GetString(kPrefPrefix + i, "");
+            if (v.Length == 0) break;
+            var parts = v.Split('|');
+            if (parts.Length < 2) continue;
+            var bm = new Bookmark();
+            int.TryParse(parts[0], out bm.page);
+            bm.bookTitle = parts[1];
+            bm.slotCode = parts.Length > 2 ? parts[2] : "";
+            bm.snippet = parts.Length > 3 ? parts[3] : "";
+            Bookmarks.Add(bm);
+        }
+    }
+    void SaveBookmarkToPrefs(Bookmark bm)
+    {
+        // 找到该书签在列表中的位置作为槽位;重写全部书签保持顺序稳定
+        int idx = Bookmarks.IndexOf(bm);
+        for (int i = 0; i < 200; i++)
+        {
+            if (i < Bookmarks.Count)
+            {
+                var b = Bookmarks[i];
+                PlayerPrefs.SetString(kPrefPrefix + i, b.page + "|" + b.bookTitle + "|" + b.slotCode + "|" + b.snippet);
+            }
+            else if (PlayerPrefs.GetString(kPrefPrefix + i, "").Length > 0)
+            {
+                PlayerPrefs.DeleteKey(kPrefPrefix + i);
+            }
+        }
+        PlayerPrefs.Save();
+    }
+
     string[] pages = new string[0];
     int page = 0;
     string currentTitle = "";
@@ -47,6 +84,7 @@ public class BookReader : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        LoadBookmarks();
         if (panelRoot == null) panelRoot = gameObject;
         panelRoot.SetActive(false);
         if (bookmarkBtn != null)
@@ -97,13 +135,13 @@ public class BookReader : MonoBehaviour
         string plain = pages[page].Replace("\n", " ").Trim();
         bm.snippet = plain.Length > 18 ? plain.Substring(0, 18) + "…" : plain;
         UpdateBookmarkButton();
+        SaveBookmarkToPrefs(bm);
         Debug.Log("[书签] 已保存:" + currentTitle + " 第" + (page + 1) + "页");
     }
 
     void UpdateBookmarkButton()
     {
         if (bookmarkBtn == null) return;
-        if (bookmarkBtn != null)
         {
             var t = bookmarkBtn.GetComponentInChildren<Text>();
             if (t != null) t.text = "书签 (" + Bookmarks.Count + ")";
@@ -178,7 +216,7 @@ public class BookReader : MonoBehaviour
         {
             var camT = Camera.main.transform;
             Vector3 target = camT.position + camT.forward * distance;
-            target.y = camT.position.y + heightOffset + 0.75f;
+            target.y = camT.position.y + heightOffset;
             transform.position = Vector3.Lerp(transform.position, target, Time.deltaTime * 6f);
             Vector3 dir = transform.position - camT.position;
             dir.y = 0f;
@@ -196,7 +234,7 @@ public class BookReader : MonoBehaviour
         if (cam == null) return;
         var camT = cam.transform;
         Vector3 pos = camT.position + camT.forward * distance;
-        pos.y = camT.position.y + heightOffset + 0.75f;
+        pos.y = camT.position.y + heightOffset;
         transform.position = pos;
         Vector3 dir = pos - camT.position;
         dir.y = 0f;
