@@ -4268,8 +4268,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 685}
-  m_SizeDelta: {x: -32, y: 50}
+  m_AnchoredPosition: {x: 0, y: 410}
+  m_SizeDelta: {x: -32, y: -840}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &37978412
 MonoBehaviour:
@@ -4293,7 +4293,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 46
+    m_FontSize: 44
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -4302,7 +4302,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "\u4F7F \u7528 \u987B \u77E5"
 --- !u!222 &37978413
@@ -55238,7 +55238,7 @@ RectTransform:
   m_GameObject: {fileID: 419367620}
   m_LocalRotation: {x: -0, y: 1, z: -0, w: -0.00000004371139}
   m_LocalPosition: {x: 0, y: 0, z: 1.35}
-  m_LocalScale: {x: 0.00125, y: 0.00125, z: 0.00125}
+  m_LocalScale: {x: 0.00126, y: 0.00126, z: 0.00126}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 999620164}
@@ -55251,7 +55251,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -2.45, y: 1.62}
-  m_SizeDelta: {x: 620, y: 720}
+  m_SizeDelta: {x: 620, y: 900}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &419367622
 MonoBehaviour:
@@ -59781,8 +59781,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 560}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 260}
+  m_SizeDelta: {x: -32, y: -680}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &450103187
 MonoBehaviour:
@@ -59806,7 +59806,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -59815,7 +59815,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010PICO \u624B\u67C4\u3011</b>\n\u5DE6\u6447\u6746 = \u884C\u8D70   
     \u53F3\u6447\u6746 = \u8F6C\u8EAB\n\u6273\u673A = \u5F00\u4E66 / \u7FFB\u9875
@@ -65766,8 +65766,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 145}
-  m_SizeDelta: {x: -32, y: 250}
+  m_AnchoredPosition: {x: 0, y: -270}
+  m_SizeDelta: {x: -32, y: -580}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &500387846
 MonoBehaviour:
@@ -65791,7 +65791,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -65800,7 +65800,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u4F53\u9A8C\u52A8\u7EBF\u3011</b>\n\u2460 \u70B9\"\u8FDB\u5165\u56FE\u4E66\u9986\"\u76F4\u8FBE\u4E66\u67B6\n\u2461
     \u4E66\u810A\u6807\u9898\u627E\u4E66 \u2192 \u6273\u673A\u9605\u8BFB\n\u2462
@@ -66421,7 +66421,7 @@ RectTransform:
   m_GameObject: {fileID: 505778807}
   m_LocalRotation: {x: -0, y: -0.92387956, z: -0, w: 0.38268346}
   m_LocalPosition: {x: 0, y: 0, z: -14}
-  m_LocalScale: {x: 0.0016000002, y: 0.0016, z: 0.0016000002}
+  m_LocalScale: {x: 0.00126, y: 0.00126, z: 0.00126}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 717020710}
@@ -66434,7 +66434,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -14, y: 1.75}
-  m_SizeDelta: {x: 620, y: 720}
+  m_SizeDelta: {x: 620, y: 900}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &505778809
 MonoBehaviour:
@@ -66584,8 +66584,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 560}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 260}
+  m_SizeDelta: {x: -32, y: -680}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &505966180
 MonoBehaviour:
@@ -66609,7 +66609,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -66618,7 +66618,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010PICO \u624B\u67C4\u3011</b>\n\u5DE6\u6447\u6746 = \u884C\u8D70   
     \u53F3\u6447\u6746 = \u8F6C\u8EAB\n\u6273\u673A = \u5F00\u4E66 / \u7FFB\u9875
@@ -72045,7 +72045,7 @@ RectTransform:
   m_GameObject: {fileID: 544748991}
   m_LocalRotation: {x: -0, y: 1, z: -0, w: -0.00000004371139}
   m_LocalPosition: {x: 0, y: 0, z: 1.35}
-  m_LocalScale: {x: 0.00125, y: 0.00125, z: 0.00125}
+  m_LocalScale: {x: 0.00126, y: 0.00126, z: 0.00126}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1132960250}
@@ -72058,7 +72058,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 2.45, y: 1.62}
-  m_SizeDelta: {x: 620, y: 720}
+  m_SizeDelta: {x: 620, y: 900}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &544748993
 MonoBehaviour:
@@ -75414,8 +75414,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 145}
-  m_SizeDelta: {x: -32, y: 250}
+  m_AnchoredPosition: {x: 0, y: -270}
+  m_SizeDelta: {x: -32, y: -580}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &567826592
 MonoBehaviour:
@@ -75439,7 +75439,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -75448,7 +75448,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u4F53\u9A8C\u52A8\u7EBF\u3011</b>\n\u2460 \u70B9\"\u8FDB\u5165\u56FE\u4E66\u9986\"\u76F4\u8FBE\u4E66\u67B6\n\u2461
     \u4E66\u810A\u6807\u9898\u627E\u4E66 \u2192 \u6273\u673A\u9605\u8BFB\n\u2462
@@ -82630,8 +82630,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 370}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 20}
+  m_SizeDelta: {x: -32, y: -660}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &624747315
 MonoBehaviour:
@@ -82655,7 +82655,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -82664,7 +82664,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u7F16\u8F91\u5668 \xB7 \u952E\u76D8\u9F20\u6807\u3011</b>\nWASD
     \u884C\u8D70    \u53F3\u952E\u62D6\u52A8 = \u8F6C\u5934\n\u5DE6\u952E = \u6293\u4E66   
@@ -95996,8 +95996,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 685}
-  m_SizeDelta: {x: -32, y: 50}
+  m_AnchoredPosition: {x: 0, y: 410}
+  m_SizeDelta: {x: -32, y: -840}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &717020711
 MonoBehaviour:
@@ -96021,7 +96021,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 46
+    m_FontSize: 44
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -96030,7 +96030,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "\u4F7F \u7528 \u987B \u77E5"
 --- !u!222 &717020712
@@ -97710,8 +97710,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 370}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 20}
+  m_SizeDelta: {x: -32, y: -660}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &730977636
 MonoBehaviour:
@@ -97735,7 +97735,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -97744,7 +97744,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u7F16\u8F91\u5668 \xB7 \u952E\u76D8\u9F20\u6807\u3011</b>\nWASD
     \u884C\u8D70    \u53F3\u952E\u62D6\u52A8 = \u8F6C\u5934\n\u5DE6\u952E = \u6293\u4E66   
@@ -100672,8 +100672,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 370}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 20}
+  m_SizeDelta: {x: -32, y: -660}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &749527548
 MonoBehaviour:
@@ -100697,7 +100697,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -100706,7 +100706,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u7F16\u8F91\u5668 \xB7 \u952E\u76D8\u9F20\u6807\u3011</b>\nWASD
     \u884C\u8D70    \u53F3\u952E\u62D6\u52A8 = \u8F6C\u5934\n\u5DE6\u952E = \u6293\u4E66   
@@ -108195,8 +108195,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 370}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 20}
+  m_SizeDelta: {x: -32, y: -660}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &811130587
 MonoBehaviour:
@@ -108220,7 +108220,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -108229,7 +108229,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u7F16\u8F91\u5668 \xB7 \u952E\u76D8\u9F20\u6807\u3011</b>\nWASD
     \u884C\u8D70    \u53F3\u952E\u62D6\u52A8 = \u8F6C\u5934\n\u5DE6\u952E = \u6293\u4E66   
@@ -117607,8 +117607,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 145}
-  m_SizeDelta: {x: -32, y: 250}
+  m_AnchoredPosition: {x: 0, y: -270}
+  m_SizeDelta: {x: -32, y: -580}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &890424144
 MonoBehaviour:
@@ -117632,7 +117632,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -117641,7 +117641,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u4F53\u9A8C\u52A8\u7EBF\u3011</b>\n\u2460 \u70B9\"\u8FDB\u5165\u56FE\u4E66\u9986\"\u76F4\u8FBE\u4E66\u67B6\n\u2461
     \u4E66\u810A\u6807\u9898\u627E\u4E66 \u2192 \u6273\u673A\u9605\u8BFB\n\u2462
@@ -135137,8 +135137,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 685}
-  m_SizeDelta: {x: -32, y: 50}
+  m_AnchoredPosition: {x: 0, y: 410}
+  m_SizeDelta: {x: -32, y: -840}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &999620165
 MonoBehaviour:
@@ -135162,7 +135162,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 46
+    m_FontSize: 44
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -135171,7 +135171,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "\u4F7F \u7528 \u987B \u77E5"
 --- !u!222 &999620166
@@ -135942,8 +135942,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 560}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 260}
+  m_SizeDelta: {x: -32, y: -680}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1003164485
 MonoBehaviour:
@@ -135967,7 +135967,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -135976,7 +135976,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010PICO \u624B\u67C4\u3011</b>\n\u5DE6\u6447\u6746 = \u884C\u8D70   
     \u53F3\u6447\u6746 = \u8F6C\u8EAB\n\u6273\u673A = \u5F00\u4E66 / \u7FFB\u9875
@@ -146259,7 +146259,7 @@ RectTransform:
   m_GameObject: {fileID: 1083640104}
   m_LocalRotation: {x: -0, y: 0.38268346, z: -0, w: 0.9238795}
   m_LocalPosition: {x: 0, y: 0, z: -14}
-  m_LocalScale: {x: 0.0016000002, y: 0.0016, z: 0.0016000002}
+  m_LocalScale: {x: 0.00126, y: 0.00126, z: 0.00126}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 37978411}
@@ -146272,7 +146272,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 14, y: 1.75}
-  m_SizeDelta: {x: 620, y: 720}
+  m_SizeDelta: {x: 620, y: 900}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1083640106
 MonoBehaviour:
@@ -146388,8 +146388,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 685}
-  m_SizeDelta: {x: -32, y: 50}
+  m_AnchoredPosition: {x: 0, y: 410}
+  m_SizeDelta: {x: -32, y: -840}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1084230132
 MonoBehaviour:
@@ -146413,7 +146413,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 46
+    m_FontSize: 44
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -146422,7 +146422,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "\u4F7F \u7528 \u987B \u77E5"
 --- !u!222 &1084230133
@@ -154966,8 +154966,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 685}
-  m_SizeDelta: {x: -32, y: 50}
+  m_AnchoredPosition: {x: 0, y: 410}
+  m_SizeDelta: {x: -32, y: -840}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1132960251
 MonoBehaviour:
@@ -154991,7 +154991,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 46
+    m_FontSize: 44
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -155000,7 +155000,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "\u4F7F \u7528 \u987B \u77E5"
 --- !u!222 &1132960252
@@ -155520,8 +155520,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 145}
-  m_SizeDelta: {x: -32, y: 250}
+  m_AnchoredPosition: {x: 0, y: -270}
+  m_SizeDelta: {x: -32, y: -580}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1137638515
 MonoBehaviour:
@@ -155545,7 +155545,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -155554,7 +155554,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u4F53\u9A8C\u52A8\u7EBF\u3011</b>\n\u2460 \u70B9\"\u8FDB\u5165\u56FE\u4E66\u9986\"\u76F4\u8FBE\u4E66\u67B6\n\u2461
     \u4E66\u810A\u6807\u9898\u627E\u4E66 \u2192 \u6273\u673A\u9605\u8BFB\n\u2462
@@ -161610,8 +161610,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 145}
-  m_SizeDelta: {x: -32, y: 250}
+  m_AnchoredPosition: {x: 0, y: -270}
+  m_SizeDelta: {x: -32, y: -580}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1197518534
 MonoBehaviour:
@@ -161635,7 +161635,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -161644,7 +161644,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u4F53\u9A8C\u52A8\u7EBF\u3011</b>\n\u2460 \u70B9\"\u8FDB\u5165\u56FE\u4E66\u9986\"\u76F4\u8FBE\u4E66\u67B6\n\u2461
     \u4E66\u810A\u6807\u9898\u627E\u4E66 \u2192 \u6273\u673A\u9605\u8BFB\n\u2462
@@ -161770,7 +161770,7 @@ RectTransform:
   m_GameObject: {fileID: 1198793362}
   m_LocalRotation: {x: -0, y: 0.92387956, z: -0, w: 0.38268346}
   m_LocalPosition: {x: 0, y: 0, z: 14}
-  m_LocalScale: {x: 0.0016, y: 0.0016, z: 0.0016}
+  m_LocalScale: {x: 0.00126, y: 0.00126, z: 0.00126}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1084230131}
@@ -161783,7 +161783,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 14, y: 1.75}
-  m_SizeDelta: {x: 620, y: 720}
+  m_SizeDelta: {x: 620, y: 900}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1198793364
 MonoBehaviour:
@@ -163235,8 +163235,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 370}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 20}
+  m_SizeDelta: {x: -32, y: -660}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1204713844
 MonoBehaviour:
@@ -163260,7 +163260,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -163269,7 +163269,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u7F16\u8F91\u5668 \xB7 \u952E\u76D8\u9F20\u6807\u3011</b>\nWASD
     \u884C\u8D70    \u53F3\u952E\u62D6\u52A8 = \u8F6C\u5934\n\u5DE6\u952E = \u6293\u4E66   
@@ -164920,8 +164920,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 685}
-  m_SizeDelta: {x: -32, y: 50}
+  m_AnchoredPosition: {x: 0, y: 410}
+  m_SizeDelta: {x: -32, y: -840}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1218153573
 MonoBehaviour:
@@ -164945,7 +164945,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 46
+    m_FontSize: 44
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -164954,7 +164954,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "\u4F7F \u7528 \u987B \u77E5"
 --- !u!222 &1218153574
@@ -169369,8 +169369,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 560}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 260}
+  m_SizeDelta: {x: -32, y: -680}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1252377670
 MonoBehaviour:
@@ -169394,7 +169394,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -169403,7 +169403,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010PICO \u624B\u67C4\u3011</b>\n\u5DE6\u6447\u6746 = \u884C\u8D70   
     \u53F3\u6447\u6746 = \u8F6C\u8EAB\n\u6273\u673A = \u5F00\u4E66 / \u7FFB\u9875
@@ -187386,8 +187386,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 145}
-  m_SizeDelta: {x: -32, y: 250}
+  m_AnchoredPosition: {x: 0, y: -270}
+  m_SizeDelta: {x: -32, y: -580}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1378471926
 MonoBehaviour:
@@ -187411,7 +187411,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -187420,7 +187420,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u4F53\u9A8C\u52A8\u7EBF\u3011</b>\n\u2460 \u70B9\"\u8FDB\u5165\u56FE\u4E66\u9986\"\u76F4\u8FBE\u4E66\u67B6\n\u2461
     \u4E66\u810A\u6807\u9898\u627E\u4E66 \u2192 \u6273\u673A\u9605\u8BFB\n\u2462
@@ -192255,7 +192255,7 @@ RectTransform:
   m_GameObject: {fileID: 1414642923}
   m_LocalRotation: {x: -0, y: -0.38268346, z: -0, w: 0.9238795}
   m_LocalPosition: {x: 0, y: 0, z: 14}
-  m_LocalScale: {x: 0.0016000002, y: 0.0016, z: 0.0016000002}
+  m_LocalScale: {x: 0.00126, y: 0.00126, z: 0.00126}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1218153572}
@@ -192268,7 +192268,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -14, y: 1.75}
-  m_SizeDelta: {x: 620, y: 720}
+  m_SizeDelta: {x: 620, y: 900}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1414642925
 MonoBehaviour:
@@ -209210,8 +209210,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 370}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 20}
+  m_SizeDelta: {x: -32, y: -660}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1556043326
 MonoBehaviour:
@@ -209235,7 +209235,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -209244,7 +209244,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010\u7F16\u8F91\u5668 \xB7 \u952E\u76D8\u9F20\u6807\u3011</b>\nWASD
     \u884C\u8D70    \u53F3\u952E\u62D6\u52A8 = \u8F6C\u5934\n\u5DE6\u952E = \u6293\u4E66   
@@ -210218,8 +210218,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 560}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 260}
+  m_SizeDelta: {x: -32, y: -680}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1562017781
 MonoBehaviour:
@@ -210243,7 +210243,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -210252,7 +210252,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010PICO \u624B\u67C4\u3011</b>\n\u5DE6\u6447\u6746 = \u884C\u8D70   
     \u53F3\u6447\u6746 = \u8F6C\u8EAB\n\u6273\u673A = \u5F00\u4E66 / \u7FFB\u9875
@@ -270753,8 +270753,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 560}
-  m_SizeDelta: {x: -32, y: 180}
+  m_AnchoredPosition: {x: 0, y: 260}
+  m_SizeDelta: {x: -32, y: -680}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1989683457
 MonoBehaviour:
@@ -270778,7 +270778,7 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
-    m_FontSize: 26
+    m_FontSize: 24
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -270787,7 +270787,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 1
+    m_VerticalOverflow: 0
     m_LineSpacing: 1
   m_Text: "<b>\u3010PICO \u624B\u67C4\u3011</b>\n\u5DE6\u6447\u6746 = \u884C\u8D70   
     \u53F3\u6447\u6746 = \u8F6C\u8EAB\n\u6273\u673A = \u5F00\u4E66 / \u7FFB\u9875
