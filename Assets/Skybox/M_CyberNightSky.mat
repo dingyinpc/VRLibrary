@@ -38,7 +38,7 @@ Material:
     - _NebulaScale: 1.2
     - _StarBrightness: 1.6
     - _StarDensity: 0.13
-    - _StarScale: 95
+    - _StarScale: 19
     m_Colors:
     - _GroundColor: {r: 0.013, g: 0.021, b: 0.032, a: 1}
     - _HorizonColor: {r: 0.028, g: 0.044999883, b: 0.08499985, a: 1}

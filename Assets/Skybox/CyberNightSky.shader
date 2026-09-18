@@ -36,7 +36,7 @@ Shader "Skybox/CyberNight"
         _MoonHalo      ("Moon Halo", Range(0, 2)) = 0.9
 
         [Header(Stars)]
-        _StarScale      ("Star Grid Scale", Range(20, 400)) = 110
+        _StarScale      ("Star Grid Scale", Range(5, 400)) = 110
         _StarDensity    ("Star Density", Range(0.02, 0.6)) = 0.30
         _StarBrightness ("Star Brightness", Float) = 1.4
 

@@ -11,7 +11,7 @@ using UnityEngine;
 public class SprintController : MonoBehaviour
 {
     [Header("加速设置")]
-    public float sprintMultiplier = 2f;
+    public float sprintMultiplier = 3f;
 
     [Tooltip("留空自动在子级查找 DynamicMoveProvider / ContinuousMoveProvider")]
     public MonoBehaviour moveProviderBehaviour;
@@ -20,6 +20,9 @@ public class SprintController : MonoBehaviour
     bool sprinting;
 
     System.Reflection.PropertyInfo speedProp;
+    Transform camOffset;          // 相机偏移节点(不被头显追踪驱动,可安全加晃动)
+    Vector3 camOffsetBase;
+    float bobT;
 
     void Awake()
     {
@@ -35,17 +38,41 @@ public class SprintController : MonoBehaviour
             }
         }
         if (speedProp != null) baseSpeed = (float)speedProp.GetValue(moveProviderBehaviour, null);
-        if (baseSpeed <= 0f) baseSpeed = 2f;
-        else speedProp.SetValue(moveProviderBehaviour, baseSpeed, null);
+        if (baseSpeed <= 0f) baseSpeed = 1.5f;
+        // 相机偏移节点(跑步震动载体)
+        var co = transform.GetComponentInChildren<Unity.XR.CoreUtils.XROrigin>(true);
+        if (co != null) {
+            var cot = co.transform.Find("Camera Offset");
+            if (cot != null) { camOffset = cot; camOffsetBase = cot.localPosition; }
+        }
     }
 
     void Update()
     {
         if (moveProviderBehaviour == null || speedProp == null) return;
         bool sprint = ReadSprintInput();
-        if (sprint == sprinting) return;
-        sprinting = sprint;
-        speedProp.SetValue(moveProviderBehaviour, baseSpeed * (sprinting ? sprintMultiplier : 1f), null);
+        if (sprint != sprinting)
+        {
+            sprinting = sprint;
+            speedProp.SetValue(moveProviderBehaviour, baseSpeed * (sprinting ? sprintMultiplier : 1f), null);
+        }
+        // 跑步镜头震荡:轻微纵向颠簸(模拟跑步节奏),停止后回弹
+        if (camOffset != null)
+        {
+            if (sprinting)
+            {
+                bobT += Time.deltaTime * 11f;
+                var p = camOffsetBase;
+                p.y += Mathf.Sin(bobT) * 0.028f;
+                p.x += Mathf.Cos(bobT * 0.5f) * 0.012f;
+                camOffset.localPosition = p;
+            }
+            else if (bobT > 0f)
+            {
+                bobT = 0f;
+                camOffset.localPosition = camOffsetBase;
+            }
+        }
     }
 
     /// <summary>左手 Grip(真机)或 左 Shift(编辑器)。</summary>
