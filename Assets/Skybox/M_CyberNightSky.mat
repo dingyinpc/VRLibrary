@@ -30,15 +30,16 @@ Material:
     - _HorizonGlow: 0.9
     - _HorizonLineIntensity: 1.2
     - _HorizonLineWidth: 0.014
-    - _MoonHalo: 0.9
+    - _MoonHalo: 0.6
     - _MoonIntensity: 3
-    - _MoonSize: 0.033
+    - _MoonSize: 0.02
     - _MoonSoftness: 0.014
     - _NebulaIntensity: 0.4
     - _NebulaScale: 1.2
-    - _StarBrightness: 1.6
-    - _StarDensity: 0.13
+    - _StarBrightness: 2.2
+    - _StarDensity: 0.2
     - _StarScale: 19
+    - _StarSize: 0.3
     m_Colors:
     - _GroundColor: {r: 0.013, g: 0.021, b: 0.032, a: 1}
     - _HorizonColor: {r: 0.028, g: 0.044999883, b: 0.08499985, a: 1}

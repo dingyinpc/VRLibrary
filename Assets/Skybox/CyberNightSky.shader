@@ -38,6 +38,7 @@ Shader "Skybox/CyberNight"
         [Header(Stars)]
         _StarScale      ("Star Grid Scale", Range(5, 400)) = 110
         _StarDensity    ("Star Density", Range(0.02, 0.6)) = 0.30
+        _StarSize       ("Star Size", Range(0.05, 1)) = 0.35
         _StarBrightness ("Star Brightness", Float) = 1.4
 
         [Header(Nebula)]
@@ -79,6 +80,7 @@ Shader "Skybox/CyberNight"
                 float  _MoonHalo;
                 float  _StarScale;
                 float  _StarDensity;
+                float  _StarSize;
                 float  _StarBrightness;
                 float  _NebulaIntensity;
                 float4 _NebulaColor;
@@ -168,7 +170,7 @@ Shader "Skybox/CyberNight"
                 float size = lerp(0.055, 0.15, hash12(cellKey + 15.3));
 
                 // 软边缘圆点(高斯点状星, 无需贴图)
-                float core = exp(-dist * dist * (50.0 + (1.0 - size) * 50.0));
+                float core = exp(-dist * dist * (50.0 + (1.0 - size) * 50.0) / (_StarSize * _StarSize));
                 float star = has * core;
 
                 // 亮度与颜色: 大部分冷白, 少量暖色 / 品红点缀
