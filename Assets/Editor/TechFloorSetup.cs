@@ -284,6 +284,39 @@ public static class TechFloorSetup
         UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
     }
 
+    // 诊断用:同一张贴图,铺在 Cube 上 vs 铺在它自己的模型上,到底哪个才是设计意图
+    [MenuItem("VRLibrary/TechFloor 摆一块真模型做对照")]
+    public static void PlaceReferenceTile()
+    {
+        const string refName = "TechFloor_RefTile";
+        var old = GameObject.Find(refName);
+        if (old != null) UnityEngine.Object.DestroyImmediate(old);
+
+        var objs = AssetDatabase.LoadAllAssetsAtPath(ModelPath);
+        GameObject src = null;
+        foreach (var o in objs)
+        {
+            var go = o as GameObject;
+            if (go != null && go.GetComponent<MeshFilter>() != null && go.GetComponent<MeshRenderer>() == null) src = go;
+            if (go != null && go.GetComponent<MeshRenderer>() != null && go.name.Contains("TechFloor")) src = go;
+        }
+        if (src == null) { Debug.LogError("[TechFloor] 模型里没有可实例化的网格:" + ModelPath); return; }
+
+        var inst = UnityEngine.Object.Instantiate(src);
+        inst.name = refName;
+        var t = inst.transform;
+        t.SetParent(null, false);
+        t.position = new Vector3(3f, 0.06f, 5f);
+        t.localScale = new Vector3(2f, 2f, 2f);
+        var r = inst.GetComponent<MeshRenderer>();
+        if (r != null) r.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/M_TechFloorTile.mat");
+        var mf = inst.GetComponent<MeshFilter>();
+        Debug.Log("[TechFloor] 已摆出对照块 " + refName + " 网格=" + (mf == null || mf.sharedMesh == null ? "?" : mf.sharedMesh.name)
+            + " 三角=" + (mf == null || mf.sharedMesh == null ? 0 : mf.sharedMesh.triangles.Length / 3)
+            + " 本地尺寸=" + (mf == null || mf.sharedMesh == null ? "?" : mf.sharedMesh.bounds.size.ToString())
+            + "；删掉它:按名找 " + refName);
+    }
+
     static string Name(Material m, string prop)
     {
         var t = m.GetTexture(prop);
