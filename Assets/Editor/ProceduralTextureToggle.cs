@@ -89,6 +89,31 @@ public static class ProceduralTextureToggle
         Debug.Log("[程序化贴图] 已移除,恢复纯色。纹理资产保留在 " + kTexDir + ",可随时重新应用。");
     }
 
+    [MenuItem("VRLibrary/程序化贴图/改三线性过滤(修远处块状)")]
+    public static void FixFiltering()
+    {
+        var guids = AssetDatabase.FindAssets("t:Texture2D", new[] { kTexDir });
+        int changed = 0;
+        foreach (var g in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(g);
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (tex == null) continue;
+            bool need = tex.filterMode != FilterMode.Trilinear || tex.anisoLevel < 8;
+            tex.filterMode = FilterMode.Trilinear;
+            tex.anisoLevel = 8;
+            if (tex.mipmapCount < 2)
+                Debug.LogWarning("[程序化贴图] " + tex.name + " 没有 mip 链(远处只能靠放大低层撑),距离越远越糊 —— 生成时 mipChain 要开");
+            if (need) { EditorUtility.SetDirty(tex); changed++; }
+            Debug.Log("[程序化贴图] " + tex.name + " " + tex.width + "x" + tex.height
+                + " mip=" + tex.mipmapCount + " 格式=" + tex.format
+                + " 过滤=" + tex.filterMode + " 各向异性=" + tex.anisoLevel
+                + " 未压缩体积≈" + (new System.IO.FileInfo(path).Length / 1024) + "KB");
+        }
+        AssetDatabase.SaveAssets();
+        Debug.Log("[程序化贴图] 存量过滤已修:" + changed + "/" + guids.Length + " 张改为三线性。");
+    }
+
     // ------------------------------------------------ 纹理生成
 
     static Texture2D EnsureTexture(string name, string kind)
@@ -104,7 +129,9 @@ public static class ProceduralTextureToggle
     {
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
         tex.wrapMode = TextureWrapMode.Repeat;
-        tex.filterMode = FilterMode.Bilinear;
+        // 带 mip 链却用 Bilinear 时,远处会在相邻 mip 层之间硬跳,看起来就是"比马赛克高一级"的软方块。
+        tex.filterMode = FilterMode.Trilinear;
+        tex.anisoLevel = 8;
         return tex;
     }
 
