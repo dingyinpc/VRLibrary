@@ -120,7 +120,9 @@ public static class TechFloorSetup
         mat.SetFloat("_OcclusionStrength", 1f);
         mat.SetFloat("_BumpScale", 1f);
         mat.SetFloat("_Surface", 0f);         // Opaque
-        mat.SetColor("_EmissionColor", new Color(4f, 4f, 4f, 1f));   // 白色 × 强度 4
+        // 默认关:本场景地上已有一套发光导光线(GL_* / Guide_*),砖的发光线画在贴图内部,
+        // 平铺后会与那套线错位叠加 → 灯光线紊乱。要亮就用菜单 TechFloor 地板发光开关。
+        mat.SetColor("_EmissionColor", new Color(0f, 0f, 0f, 1f));
 
         Enable(mat, "_METALLICSPECGLOSSMAP", true);
         Enable(mat, "_OCCLUSIONMAP", true);
@@ -152,13 +154,27 @@ public static class TechFloorSetup
             + " _Smoothness=" + mat.GetFloat("_Smoothness")
             + " _EmissionColor=" + mat.GetColor("_EmissionColor")
             + " _BaseMap_ST=" + mat.GetVector("_BaseMap_ST"));
-        if (Array.IndexOf(mat.shaderKeywords, "_EMISSION") < 0)
-        {
-            mat.EnableKeyword("_EMISSION");
-            EditorUtility.SetDirty(mat);
-            AssetDatabase.SaveAssets();
-            Debug.Log("[TechFloor] 补挂 _EMISSION 后关键词=[" + string.Join(",", mat.shaderKeywords) + "]");
-        }
+        // 这里只报告、不擅自开启:本场景地上已有一套导光线(GL_* / M_GridLine),
+        // 砖的发光线画在贴图内部而非边缘,平铺后与那套线错位叠加 → 灯光线紊乱。默认应为关。
+        Debug.Log("[TechFloor] 自发光" + (EmissionOn(mat) ? "开" : "关") + "（强度 " + mat.GetColor("_EmissionColor").maxColorComponent.ToString("F1") + "）"
+            + "(切换用菜单 VRLibrary → TechFloor 地板发光开关)");
+    }
+
+    static bool EmissionOn(Material m) { return m.GetColor("_EmissionColor").maxColorComponent > 0.001f; }
+
+    [MenuItem("VRLibrary/TechFloor 地板发光开关")]
+    public static void ToggleEmission()
+    {
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(MatPath);
+        if (mat == null) { Debug.LogError("[TechFloor] 没有 " + MatPath); return; }
+        // 不用 EnableKeyword/DisableKeyword 当开关:实测 EnableKeyword 能落盘、DisableKeyword 落不了盘,
+        // 切两次文件里 _EMISSION 依旧在。颜色写 0 时 shader 里 map.rgb × 0 = 无发光,效果等价且必定持久。
+        bool on = EmissionOn(mat);
+        mat.SetColor("_EmissionColor", on ? new Color(0f, 0f, 0f, 1f) : new Color(4f, 4f, 4f, 1f));
+        EditorUtility.SetDirty(mat);
+        AssetDatabase.SaveAssets();
+        var disk = AssetDatabase.LoadAssetAtPath<Material>(MatPath);
+        Debug.Log("[TechFloor] 地板自发光落盘状态:" + (EmissionOn(disk) ? "开" : "关"));
     }
 
     [MenuItem("VRLibrary/TechFloor 接到主地板")]
