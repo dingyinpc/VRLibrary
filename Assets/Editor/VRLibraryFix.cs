@@ -227,6 +227,201 @@ public static class VRLibraryFix
             || t.max.z > d.max.z + tol || t.min.z < d.min.z - tol;
     }
 
+    /// <summary>
+    /// 以格子标签为权威,把一层 96 本书与 96 个格子一一对应(允许跨架搬书),
+    /// 并把每本书的 slotCode 改成它落脚那格的标签文字。
+    /// 编号方向已由用户确认:"以书架标签为准"。
+    /// </summary>
+    [MenuItem("VRLibrary/按标签统一编号(可跨架搬书)")]
+    public static void AlignCodesToLabels()
+    {
+        var scene = EditorSceneManager.GetActiveScene();
+        if (scene.path != "Assets/_Scenes/SmartLibrary.unity")
+        {
+            Debug.LogError("[VRLibraryFix] 当前场景不是 SmartLibrary,拒绝改动:" + scene.path);
+            return;
+        }
+        log = new StringBuilder();
+        Line("按书架标签统一编号  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        Physics.SyncTransforms();
+
+        var labels = CollectLabels();
+        var books = BooksOnShelves().Where(b => ShelfName(b.transform).StartsWith("Shelf_")).ToList();
+        Line("读到格子标签 " + labels.Count + " 个;一层书 " + books.Count + " 本");
+        if (labels.Count == 0 || labels.Count != books.Count)
+        {
+            Line("!! 标签数与书数不等,放弃执行(先跑审计看差异)");
+            Write();
+            return;
+        }
+
+        // ① 判定配对方向:哪个沿架偏移能让最多书在同层找到标签
+        float shift = PickShift(books, labels);
+        // ② 学出标签→书的三维位移
+        Vector3 delta = LearnDelta(books, labels, shift);
+        Line(string.Format("采用标签→书位移 ({0:F3},{1:F3},{2:F3}),沿架配对偏移判定为 {3:F2} m", delta.x, delta.y, delta.z, shift));
+
+        // ③ 全局一对一贪心:距离近的先配
+        //     不做"同层/同架"限制:每架每层只有 8 格而各层书数不等,限制会让二部图左右不平衡、
+        //     有书配不到格子(实测 3 本)。跨层约 0.9 m、跨架更远,贪心按距离排序自然排在最后处理;
+        //     而完全二部图上"距离近的先配"必然得到完美匹配。
+        var pairs = new List<Pair>();
+        foreach (var b in books)
+            foreach (var l in labels)
+                pairs.Add(new Pair
+                {
+                    book = b, label = l,
+                    d = Vector3.Distance(b.transform.position, l.pos + delta)
+                });
+        pairs.Sort((a, c) => a.d.CompareTo(c.d));
+
+        var shelfT = new Dictionary<string, Transform>();
+        foreach (var b in books) shelfT[ShelfName(b.transform)] = ShelfOf(b.transform);
+        foreach (var l in labels)
+            if (!shelfT.ContainsKey(l.shelf))
+                foreach (var go in UnityEngine.Object.FindObjectsOfType<Transform>(true))
+                    if (go.name == l.shelf) { shelfT[l.shelf] = go; break; }
+
+        var takenB = new HashSet<LibraryBook>();
+        var takenL = new HashSet<SlotLabel>();
+        int movedBooks = 0;
+        foreach (var p in pairs)
+        {
+            if (takenB.Contains(p.book)) continue;
+            if (takenL.Contains(p.label)) continue;
+            takenB.Add(p.book); takenL.Add(p.label);
+            var from = p.book.transform.position;
+            var to = p.label.pos + delta;
+            if (ShelfName(p.book.transform) != p.label.shelf && shelfT.ContainsKey(p.label.shelf))
+                p.book.transform.SetParent(shelfT[p.label.shelf], true);   // 跨架:换父节点,保持世界坐标
+            if (Vector3.Distance(from, to) > 0.02f)
+            {
+                p.book.transform.position = to;
+                movedBooks++;
+                Line(string.Format("  搬书 {0} {1} → {2} 格 {3}(位移 {4:F2},{5:F2},{6:F2})",
+                    p.book.gameObject.name, fmt(from), p.label.shelf, p.label.code,
+                    to.x - from.x, to.y - from.y, to.z - from.z));
+            }
+            Physics.SyncTransforms();
+        }
+        Line("配对 " + takenB.Count + " / " + books.Count + " 本;实际搬动 " + movedBooks + " 本");
+
+        // ④ 编号 = 落脚格的标签
+        int relabeled = 0;
+        foreach (var b in books)
+        {
+            var l = LabelOf(b, labels, delta);
+            if (l == null) { Line("  !! " + b.gameObject.name + " 找不到所属标签"); continue; }
+            if (b.slotCode != l.code)
+            {
+                Line(string.Format("  编号 {0} : {1} → {2}（{3}）", b.gameObject.name, b.slotCode, l.code, l.shelf));
+                b.slotCode = l.code;
+                relabeled++;
+            }
+            EditorUtility.SetDirty(b);
+        }
+        Line(string.Format("改编号 {0} 本;搬动 {1} 本", relabeled, movedBooks));
+
+        EditorSceneManager.MarkSceneDirty(scene);
+        Line("保存场景:" + (EditorSceneManager.SaveScene(scene) ? "成功" : "失败"));
+        Write();
+        Debug.Log("[VRLibraryFix] 编号统一完成 → " + kLog);
+    }
+
+    class Pair { public LibraryBook book; public SlotLabel label; public float d; }
+
+    class SlotLabel { public string shelf; public string code; public Vector3 pos; }
+
+    static List<SlotLabel> CollectLabels()
+    {
+        var list = new List<SlotLabel>();
+        foreach (var go in UnityEngine.Object.FindObjectsOfType<TextMesh>(true))
+        {
+            if (!go.gameObject.name.StartsWith("Slot_") || go.gameObject.name.StartsWith("SlotStrip")) continue;
+            string txt = (go.text ?? "").Replace("\n", "");
+            if (txt.Length < 5) continue;
+            var shelf = ShelfOf(go.transform);
+            if (shelf == null || !shelf.name.StartsWith("Shelf_")) continue;
+            list.Add(new SlotLabel { shelf = shelf.name, code = txt, pos = go.transform.position });
+        }
+        return list;
+    }
+
+    static SlotLabel LabelOf(LibraryBook b, List<SlotLabel> labels, Vector3 delta)
+    {
+        SlotLabel best = null; float bd = float.MaxValue;
+        foreach (var l in labels)
+        {
+            float d = Vector3.Distance(b.transform.position, l.pos + delta);
+            if (d < bd) { bd = d; best = l; }
+        }
+        return bd < 0.25f ? best : null;
+    }
+
+    /// <summary>从实测差值里挑"能让最多书在同层找到标签"的那个沿架偏移。</summary>
+    static float PickShift(List<LibraryBook> books, List<SlotLabel> labels)
+    {
+        var cand = new SortedSet<float>();
+        foreach (var b in books)
+            foreach (var l in labels)
+            {
+                if (l.shelf != ShelfName(b.transform)) continue;
+                float dz = b.transform.position.z - l.pos.z;
+                if (dz > 0.03f && dz < 1.5f) cand.Add(Mathf.Round(dz * 100f) / 100f);
+            }
+        int bestHits = -1; float bestShift = 0.56f;
+        foreach (var s in cand)
+        {
+            int hits = 0;
+            foreach (var b in books)
+                foreach (var l in labels)
+                    if (l.shelf == ShelfName(b.transform)
+                        && Mathf.Abs(l.pos.y - b.transform.position.y) < 0.35f
+                        && Mathf.Abs((b.transform.position.z - l.pos.z) - s) <= 0.06f) { hits++; break; }
+            if (hits > bestHits) { bestHits = hits; bestShift = s; }
+        }
+        Line("  方向判定:偏移 " + bestShift + " m 命中 " + bestHits + " 本");
+        return bestShift;
+    }
+
+    static Vector3 LearnDelta(List<LibraryBook> books, List<SlotLabel> labels, float shift)
+    {
+        var xs = new List<float>(); var ys = new List<float>(); var zs = new List<float>();
+        foreach (var b in books)
+            foreach (var l in labels)
+            {
+                if (l.shelf != ShelfName(b.transform)) continue;
+                if (Mathf.Abs((b.transform.position.z - l.pos.z) - shift) > 0.06f) continue;
+                if (Mathf.Abs(b.transform.position.y - l.pos.y) > 0.35f) continue;
+                xs.Add(b.transform.position.x - l.pos.x);
+                ys.Add(b.transform.position.y - l.pos.y);
+                zs.Add(b.transform.position.z - l.pos.z);
+                break;
+            }
+        if (xs.Count < 8) return new Vector3(0f, 0.075f, shift);
+        return new Vector3(Median(xs), Median(ys), Median(zs));
+    }
+
+    static string ShelfName(Transform t)
+    {
+        var s = ShelfOf(t);
+        return s == null ? "" : s.name;
+    }
+
+    static string fmt(Vector3 v) { return string.Format("({0:F2},{1:F2},{2:F2})", v.x, v.y, v.z); }
+
+    static float Median(List<float> v)
+    {
+        var a = v.OrderBy(x => x).ToList();
+        return a.Count % 2 == 1 ? a[a.Count / 2] : (a[a.Count / 2 - 1] + a[a.Count / 2]) * 0.5f;
+    }
+
+    static void Write()
+    {
+        Directory.CreateDirectory("Logs");
+        File.WriteAllText(kLog, log.ToString(), Encoding.UTF8);
+    }
+
     // ── 小工具 ─────────────────────────────────────────────────────
     static List<LibraryBook> BooksOnShelves()
     {

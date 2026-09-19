@@ -313,32 +313,34 @@ public static class VRLibraryAudit
         }
         Report(sb, stackedCols == 0, "一层同一列挤着书(会互相穿插、抓取拿错)", stackedCols, stackSample);
 
-        // 二、编号方向:标签装在格与格之间(实测标签恒在书下方 0.075 m、沿架差 0.56 m = 一格-0.06),
-        //     所以"最近标签"其实是邻格。哪种读法算本馆约定属于产品决定,这里只把证据列出来。
-        if (labels.Count == 0) { Line(sb, "  · 没找到格子编号标签,无法给出编号方向证据"); return; }
-        int far = 0, near = 0, neither = 0, unknown = 0;
+        // 二、编号是否等于"脚下那格"的标签(方向已定为以标签为准,这里只做直检)
+        //     分架输出:只给总数的话,一旦某架的标签关联错了看不出来
+        if (labels.Count == 0) { Line(sb, "  · 没找到格子编号标签,无法核对编号"); return; }
+        var perShelf = new Dictionary<string, int[]>();
         foreach (var b in oneFloor)
         {
-            if (string.IsNullOrEmpty(b.slotCode)) continue;
+            string sh = ShelfOf(b.transform);
+            int[] ab;
+            if (!perShelf.TryGetValue(sh, out ab)) { ab = new int[2]; perShelf[sh] = ab; }
             var p = b.transform.position;
-            string farCode = null, nearCode = null;
+            string own = null;
             foreach (var l in labels)
             {
-                if (ShelfOf(l.Key) != ShelfOf(b.transform)) continue;
-                if (Mathf.Abs(l.Key.position.y - p.y) > 0.35f) continue;      // 不同层
+                if (ShelfOf(l.Key) != sh) continue;
+                if (Mathf.Abs(l.Key.position.y - p.y) > 0.35f) continue;
                 float dz = Mathf.Abs(l.Key.position.z - p.z);
-                if (dz < 0.15f) nearCode = l.Value;
-                else if (dz > 0.45f && dz < 0.70f) farCode = l.Value;
+                if (dz > 0.49f && dz < 0.63f) { own = l.Value; break; }
             }
-            if (farCode == null && nearCode == null) { unknown++; continue; }
-            if (farCode == b.slotCode) far++;
-            else if (nearCode == b.slotCode) near++;
-            else neither++;
+            if (own != null && own == b.slotCode) ab[0]++; else ab[1]++;
         }
-        Line(sb, "  · 编号方向证据(一层 " + (far + near + neither) + " 本有编号):"
-             + "书编号 = 0.56 m 外标签 的有 " + far + " 本;= 0.06 m 邻格标签 的有 " + near
-             + " 本;两者都不是 " + neither + " 本;找不到邻近标签 " + unknown + " 本");
-        Line(sb, "  · 实测书本列序与标签列序相反(列号互补为 9)。以哪一侧为准是展馆编号约定,需人工确认后再统一。");
+        int okAll = 0, badAll = 0;
+        foreach (var kv in perShelf.OrderBy(k => k.Key))
+        {
+            okAll += kv.Value[0]; badAll += kv.Value[1];
+            Line(sb, string.Format("  · {0} 编号=脚下格标签 {1} 本,不符 {2} 本",
+                kv.Key.Split('/').Last(), kv.Value[0], kv.Value[1]));
+        }
+        Report(sb, badAll == 0, "全馆一层:编号与脚下格标签相符 " + okAll + " 本", badAll, null);
     }
 
     /// <summary>是否挂在书架(Bookshelves/Shelves2F)之下。</summary>
