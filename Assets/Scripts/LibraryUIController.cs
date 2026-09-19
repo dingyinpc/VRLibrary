@@ -31,7 +31,7 @@ public class LibraryUIController : MonoBehaviour
 
     public void OnSearchButton()
     {
-        Show("智能检索:检索接口已预留,\n等待馆藏书籍清单导入后开放查询。");
+        Show("智能检索:输入书名 / 作者 / 书架编号可模糊查询,\n选中结果即传送到该书面前并高亮。");
     }
 
     public void OnReturnButton()
