@@ -422,6 +422,124 @@ public static class VRLibraryFix
         File.WriteAllText(kLog, log.ToString(), Encoding.UTF8);
     }
 
+    // ──  放大电子屏与书名 ─────────────────────────────────────────
+    const float kScreenFillW = 0.86f;     // 屏宽占书面比例(实测原值仅 0.315)
+    const float kScreenFillH = 0.66f;     // 屏高占书面比例(实测原值仅 0.138)
+
+    /// <summary>
+    /// 书名太小根因不在字号,而在屏幕本身只占书面 31.5% 宽 × 13.8% 高 ——
+    /// 书面大片是空金属壳,字放大会先撞到屏边。所以先把屏放大,再让字撑满。
+    /// </summary>
+    [MenuItem("VRLibrary/放大电子屏与书名")]
+    public static void EnlargeScreensAndTitles()
+    {
+        var scene = EditorSceneManager.GetActiveScene();
+        if (scene.path != "Assets/_Scenes/SmartLibrary.unity")
+        {
+            Debug.LogError("[VRLibraryFix] 当前场景不是 SmartLibrary,拒绝改动:" + scene.path);
+            return;
+        }
+        log = new StringBuilder();
+        Line("放大电子屏与书名  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        Physics.SyncTransforms();
+
+        int screenChanged = 0, textChanged = 0;
+        foreach (var b in UnityEngine.Object.FindObjectsOfType<LibraryBook>(true))
+        {
+            var body = b.GetComponent<MeshRenderer>();
+            var disp = DeepChild<MeshRenderer>(b.transform, "Display");
+            var frame = DeepChild<MeshRenderer>(b.transform, "Frame");
+            var tm = DeepChild<TextMesh>(b.transform, "TitleText");
+            if (body == null || disp == null || tm == null) continue;
+
+            // ① 屏放大到书面的一定比例。
+            //    注意轴向:这些书面朝 ±x 摆放,书的"宽度"落在世界 z 上,世界 x 只有 0.025 的厚度,
+            //    所以一律用 lossyScale(局部轴)算,别用世界包围盒。
+            var ls = b.transform.lossyScale;              // 立方原语 1 m → 局部 x=宽, y=高
+            var dls = disp.transform.lossyScale;
+            float wantW = ls.x * kScreenFillW, wantH = ls.y * kScreenFillH;
+            if (dls.x > 0.0001f && dls.y > 0.0001f)
+            {
+                float fx = wantW / dls.x, fy = wantH / dls.y;
+                if (Mathf.Abs(fx - 1f) > 0.02f || Mathf.Abs(fy - 1f) > 0.02f)
+                {
+                    ScaleLocal(disp.transform, new Vector3(fx, fy, 1f));
+                    if (frame != null)
+                    {
+                        var fls = frame.transform.lossyScale;
+                        ScaleLocal(frame.transform,
+                            new Vector3(wantW * 1.05f / fls.x, wantH * 1.10f / fls.y, 1f));
+                    }
+                    screenChanged++;
+                    Physics.SyncTransforms();
+                }
+            }
+
+            // ② 在 4~8 字/行里找能塞进新屏面的最大字号
+            var mr = tm.GetComponent<MeshRenderer>();
+            if (mr == null) continue;
+            // 书名取自数据,不沿用屏上旧文字:旧文字曾被 12 字截断过(带省略号),照抄会把截断固化
+            string title = (b.title ?? "").Trim().Replace("\n", "");
+            if (title.Length == 0) title = Flat(tm.text);
+            float bestSize = 0.0015f;                 // 从下界起算:标题变长后各方案的最大字号都会低于当前值
+            string bestText = Wrap(title, 6);
+            foreach (int per in new[] { 4, 5, 6, 7, 8 })
+            {
+                string wrapped = Wrap(title, per);
+                float lo = 0.0015f, hi = 0.020f;
+                for (int it = 0; it < 14; it++)
+                {
+                    float mid = (lo + hi) * 0.5f;
+                    tm.text = wrapped; tm.characterSize = mid;
+                    if (Fits(mr.bounds, disp.bounds)) lo = mid; else hi = mid;
+                }
+                int lines = wrapped.Split('\n').Length;
+                int bestLines = bestText.Split('\n').Length;
+                if (lo > bestSize + 1e-6f || (Mathf.Abs(lo - bestSize) < 1e-6f && lines < bestLines))
+                { bestSize = lo; bestText = wrapped; }
+            }
+            tm.text = bestText;
+            tm.characterSize = bestSize;
+            Physics.SyncTransforms();
+            textChanged++;
+            var nls = disp.transform.lossyScale;
+            Line(string.Format("  {0} 书面 {1:F3}×{2:F3} 屏 {3:F3}×{4:F3} 字号→{5:F6} 行数{6} 「{7}」",
+                b.gameObject.name, ls.x, ls.y, nls.x, nls.y, bestSize,
+                bestText.Split('\n').Length, title));
+        }
+
+        Line(string.Format("屏放大 {0} 本;字号重排 {1} 本", screenChanged, textChanged));
+        EditorSceneManager.MarkSceneDirty(scene);
+        Line("保存场景:" + (EditorSceneManager.SaveScene(scene) ? "成功" : "失败"));
+        Write();
+        Debug.Log("[VRLibraryFix] 屏与字号调整完成 → " + kLog);
+    }
+
+    static void ScaleLocal(Transform t, Vector3 by)
+    {
+        var s = t.localScale;
+        t.localScale = new Vector3(s.x * by.x, s.y * by.y, s.z * by.z);
+    }
+
+    static string Wrap(string s, int per)
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < s.Length; i++)
+        {
+            sb.Append(s[i]);
+            if ((i + 1) % per == 0 && i < s.Length - 1) sb.Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    static bool Fits(Bounds t, Bounds d)
+    {
+        const float tol = 0.002f;
+        return t.max.y <= d.max.y + tol && t.min.y >= d.min.y - tol
+            && t.max.x <= d.max.x + tol && t.min.x >= d.min.x - tol
+            && t.max.z <= d.max.z + tol && t.min.z >= d.min.z - tol;
+    }
+
     // ── 小工具 ─────────────────────────────────────────────────────
     static List<LibraryBook> BooksOnShelves()
     {
