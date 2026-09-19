@@ -207,6 +207,7 @@ public class VRLibrarySmoke : MonoBehaviour
     {
         var dn = DayNightController.Instance;
         if (dn == null) { Fail("日夜切换", "没有实例"); yield break; }
+
         bool d0 = dn.isDay;
         Color env0 = RenderSettings.ambientLight;
         dn.ToggleDayNight();
@@ -219,6 +220,18 @@ public class VRLibrarySmoke : MonoBehaviour
             + " (" + env0.ToString() + " → " + env1.ToString() + ")");
         dn.ToggleDayNight();                                   // 复位
         yield return new WaitForSeconds(dn.blendSeconds + 0.6f);
+
+        // 日夜切换会写 RenderSettings.skybox 这个共享材质,而 Play 里对"资产"的修改退出后不回滚
+        // (只有场景改动会回滚)。也不能靠"读回来再写回去"复原:实测 GetColor→SetColor→SaveAssets
+        // 仍会让 _ZenithColor/_HorizonColor 从 0.044999883 变成 0.04499986 —— Unity 序列化 float
+        // 本身不幂等,写一次就漂。所以直接丢弃内存改动、从磁盘重导入。
+        var sky = RenderSettings.skybox;
+        if (sky != null)
+        {
+            string path = UnityEditor.AssetDatabase.GetAssetPath(sky);
+            if (!string.IsNullOrEmpty(path))
+                UnityEditor.AssetDatabase.ImportAsset(path, UnityEditor.ImportAssetOptions.ForceUpdate);
+        }
     }
 
     void TestWiring()
