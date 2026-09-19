@@ -106,6 +106,12 @@ public class VRLibrarySmoke : MonoBehaviour
         string body = r.contentText != null ? r.contentText.text : "";
         string head = r.titleText != null ? r.titleText.text : "";
         string p0 = r.pageText != null ? r.pageText.text : "";
+        // 书签可能把书恢复到末页(末页 NextPage 无动作属正常):先跳回首页再测翻页前进
+        var pageField = typeof(BookReader).GetField("page", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (pageField != null) pageField.SetValue(r, 0);
+        var refreshM = typeof(BookReader).GetMethod("Refresh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (refreshM != null) refreshM.Invoke(r, new object[] { false });
+        string pHome = r.pageText != null ? r.pageText.text : "";
         r.NextPage(); r.NextPage();
         string p1 = r.pageText != null ? r.pageText.text : "";
         r.Close();
@@ -115,7 +121,7 @@ public class VRLibrarySmoke : MonoBehaviour
         Check("阅读面板", opened && body.Length > 20 && closed,
             "《" + book.title + "》面板=" + opened + " 正文" + body.Length + "字 页码\"" + p0 + "\"→\"" + p1
             + "\" 关合=" + closed + " 书签 " + bmBefore + "→" + bmAfter);
-        Check("阅读面板·翻页", p0 != p1, "页码文本变化即翻页生效");
+        Check("阅读面板·翻页", pHome != p1, "首页\"" + pHome + "\"→前进两页\"" + p1 + "\"(末页书签恢复不再误报)");
     }
 
     IEnumerator TestSearchAndTeleport()
