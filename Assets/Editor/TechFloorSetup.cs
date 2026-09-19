@@ -165,16 +165,27 @@ public static class TechFloorSetup
     [MenuItem("VRLibrary/TechFloor 地板发光开关")]
     public static void ToggleEmission()
     {
-        var mat = AssetDatabase.LoadAssetAtPath<Material>(MatPath);
-        if (mat == null) { Debug.LogError("[TechFloor] 没有 " + MatPath); return; }
-        // 不用 EnableKeyword/DisableKeyword 当开关:实测 EnableKeyword 能落盘、DisableKeyword 落不了盘,
-        // 切两次文件里 _EMISSION 依旧在。颜色写 0 时 shader 里 map.rgb × 0 = 无发光,效果等价且必定持久。
-        bool on = EmissionOn(mat);
-        mat.SetColor("_EmissionColor", on ? new Color(0f, 0f, 0f, 1f) : new Color(4f, 4f, 4f, 1f));
-        EditorUtility.SetDirty(mat);
+        // 场上真正在渲染的是 2m 方砖用的 M_TechFloorTile,两份都要翻,否则点了没反应
+        bool? target = null;
+        foreach (var p in new[] { MatPath, "Assets/Materials/M_TechFloorTile.mat" })
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (mat == null) continue;
+            if (target == null) target = !EmissionOn(mat);
+            // 不用 EnableKeyword/DisableKeyword 当开关:实测 EnableKeyword 能落盘、DisableKeyword 落不了盘,
+            // 切两次文件里 _EMISSION 依旧在。颜色写 0 时 shader 里 map.rgb × 0 = 无发光,效果等价且必定持久。
+            mat.SetColor("_EmissionColor", target.Value ? new Color(4f, 4f, 4f, 1f) : new Color(0f, 0f, 0f, 1f));
+            EditorUtility.SetDirty(mat);
+        }
         AssetDatabase.SaveAssets();
-        var disk = AssetDatabase.LoadAssetAtPath<Material>(MatPath);
-        Debug.Log("[TechFloor] 地板自发光落盘状态:" + (EmissionOn(disk) ? "开" : "关"));
+        var sb = new System.Text.StringBuilder();
+        foreach (var p in new[] { MatPath, "Assets/Materials/M_TechFloorTile.mat" })
+        {
+            var disk = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (disk == null) continue;
+            sb.Append(disk.name + "=" + (EmissionOn(disk) ? "开" : "关") + " ");
+        }
+        Debug.Log("[TechFloor] 地板自发光落盘状态:" + sb.ToString().Trim());
     }
 
     [MenuItem("VRLibrary/TechFloor 接到主地板")]
@@ -197,6 +208,80 @@ public static class TechFloorSetup
         AssetDatabase.SaveAssets();
         Debug.Log("[TechFloor] 主地板材质 " + (old == null ? "null" : old.name) + " → M_TechFloor,平铺 40×40(1 砖 1 米)。"
             + " 回退:git checkout HEAD -- Assets/_Scenes/SmartLibrary.unity 后重新打开场景。");
+    }
+
+    // 场上真正露出来的表面是 Floor_Detailed/Tiles 里那 400 块 2 m 方砖(顶面 y=0.028),
+    // 主地板只在 4 cm 砖缝里露一线。所以地砖要铺到这些方砖上才看得见。
+    [MenuItem("VRLibrary/TechFloor 铺到 2m 地砖(推荐)")]
+    public static void ApplyToDetailTiles()
+    {
+        var baseMat = AssetDatabase.LoadAssetAtPath<Material>(MatPath);
+        var floorOld = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/M_Floor.mat");
+        if (baseMat == null || floorOld == null)
+        { Debug.LogError("[TechFloor] 缺 M_TechFloor 或 M_Floor"); return; }
+
+        var tileMat = CloneWithOneTile(baseMat);
+        if (tileMat == null) return;
+
+        var fd = GameObject.Find("Floor_Detailed");
+        if (fd == null) { Debug.LogError("[TechFloor] 找不到 Floor_Detailed"); return; }
+
+        int swapped = 0, kept = 0;
+        foreach (var r in fd.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            if (!r.name.StartsWith("Tile_")) continue;
+            var m = r.sharedMaterial;
+            if (m != null && m.name == "M_FloorTileAccent") { kept++; continue; }   // accent 砖保留自己的配色
+            Undo.RecordObject(r, "TechFloor 铺砖");
+            r.sharedMaterial = tileMat;
+            EditorUtility.SetDirty(r);
+            swapped++;
+        }
+
+        // 主地板退回深色 M_Floor:砖缝要读成暗缝,不能露出地砖的黑边(那会形成第二套线)
+        var floor = GameObject.Find("Floor");
+        var fr = floor == null ? null : floor.GetComponent<MeshRenderer>();
+        if (fr != null)
+        {
+            Undo.RecordObject(fr, "TechFloor 还原底面");
+            fr.sharedMaterial = floorOld;
+            EditorUtility.SetDirty(fr);
+        }
+
+        AssetDatabase.SaveAssets();
+        SaveScene();
+        Debug.Log("[TechFloor] 2m 方砖换面 " + swapped + " 块(accent 保留 " + kept + " 块),"
+            + "主地板退回 " + (fr == null ? "未找到" : floorOld.name) + "(当砖缝)。"
+            + " 回退:git checkout HEAD -- Assets/_Scenes/SmartLibrary.unity 后 openScene");
+    }
+
+    // 内置 Cube 每面 UV 就是 0..1 → 一砖一面,平铺必须回到 1×1
+    static Material CloneWithOneTile(Material src)
+    {
+        const string p = "Assets/Materials/M_TechFloorTile.mat";
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(p);
+        bool fresh = mat == null;
+        if (fresh) mat = new Material(src.shader);
+        mat.name = "M_TechFloorTile";
+        foreach (var prop in new[] { "_BaseMap", "_MetallicGlossMap", "_OcclusionMap", "_BumpMap", "_EmissionMap" })
+            mat.SetTexture(prop, src.GetTexture(prop));
+        mat.SetFloat("_Metallic", src.GetFloat("_Metallic"));
+        mat.SetFloat("_Smoothness", src.GetFloat("_Smoothness"));
+        mat.SetFloat("_OcclusionStrength", src.GetFloat("_OcclusionStrength"));
+        mat.SetFloat("_BumpScale", src.GetFloat("_BumpScale"));
+        mat.SetColor("_EmissionColor", src.GetColor("_EmissionColor"));
+        mat.shaderKeywords = src.shaderKeywords;
+        mat.SetTextureScale("_BaseMap", new Vector2(1f, 1f));
+        if (fresh) AssetDatabase.CreateAsset(mat, p);
+        else EditorUtility.SetDirty(mat);
+        return mat;
+    }
+
+    static void SaveScene()
+    {
+        var s = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(s);
+        UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
     }
 
     static string Name(Material m, string prop)
