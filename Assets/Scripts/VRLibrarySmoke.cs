@@ -253,6 +253,18 @@ public class VRLibrarySmoke : MonoBehaviour
         int books = FindObjectsOfType<LibraryBook>().Length;
         int grabs = FindObjectsOfType<UnityEngine.XR.Interaction.Toolkit.XRGrabInteractable>().Length;
         Check("书籍可抓取数", books == 262 && grabs == 262, "运行中 LibraryBook=" + books + " GrabInteractable=" + grabs);
+
+        var anchors = FindObjectsOfType<UnityEngine.XR.Interaction.Toolkit.TeleportationAnchor>();
+        int up = 0, upBad = 0;
+        foreach (var a in anchors)
+        {
+            if (a.transform.position.y <= 2.5f) continue;
+            up++;
+            if (!a.gameObject.activeInHierarchy || a.GetComponent<Collider>() == null) upBad++;
+        }
+        Check("二层传送锚点", up >= 6 && upBad == 0,
+            "锚点共 " + anchors.Length + " 个(一层 " + (anchors.Length - up) + " / 二层 " + up + "),"
+            + "二层缺碰撞体或未激活 " + upBad + " 个");
     }
 
     // ── 记录 ───────────────────────────────────────────────────────
