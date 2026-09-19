@@ -18,3 +18,6 @@ MemoryCaptures/
 create.log
 build.log
 pxr.log
+
+# Qoder 本机专属配置(桥端口等机器相关参数)
+.qoder/settings.local.json

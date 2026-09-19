@@ -36,6 +36,17 @@ namespace UnityCopilot
                 {
                     case "ping":
                         message = "pong";
+                        // 多编辑器并存:客户端靠这些字段确认"连到的是不是本工程",避免写操作打到别人的场景
+                        var pingScene = EditorSceneManager.GetActiveScene();
+                        data = new Dictionary<string, object>
+                        {
+                            { "projectName", Path.GetFileName(Directory.GetParent(Application.dataPath).FullName) },
+                            { "projectPath", Directory.GetParent(Application.dataPath).FullName },
+                            { "bridgePort", UnityBridgeServer.Port.ToString() },
+                            { "unityVersion", Application.unityVersion },
+                            { "activeScene", string.IsNullOrEmpty(pingScene.path) ? "(unsaved scene)" : pingScene.path },
+                            { "sceneDirty", pingScene.isDirty },
+                        };
                         break;
                     case "createPrefab":
                         message = CreatePrefab(p, out data);

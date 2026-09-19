@@ -16,6 +16,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using UnityEditor;
+using UnityEditor.Compilation;
 using UnityEngine;
 
 namespace UnityCopilot
@@ -51,6 +52,9 @@ namespace UnityCopilot
             if (IsImportWorker()) return;
             EditorApplication.update += ProcessMainThreadQueue;
             EditorApplication.quitting += Stop;
+            // 域重载前主动释放监听套接字:否则旧域的 listener 仍占着基准端口,
+            // 新域 Start() 会 +1 漂走(本工程实测 6401 → 6402),客户端就没法固定端口。
+            AssemblyReloadEvents.beforeAssemblyReload += Stop;
             Start();
         }
 
@@ -83,7 +87,7 @@ namespace UnityCopilot
                     _running = true;
                     _serverThread = new Thread(AcceptLoop) { IsBackground = true, Name = "UnityCopilot-WS" };
                     _serverThread.Start();
-                    Debug.Log($"[UnityCopilot] Bridge listening on ws://127.0.0.1:{Port}");
+                    Debug.Log($"[UnityCopilot] Bridge listening on ws://127.0.0.1:{Port}  (工程:{System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(Application.dataPath))})");
                     return;
                 }
                 catch (SocketException) { /* 端口被占用 → 试下一个 */ }

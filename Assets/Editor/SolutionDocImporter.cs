@@ -54,69 +54,101 @@ public static class SolutionDocImporter
         var scene = EditorSceneManager.GetActiveScene();
         if (scene.path != "Assets/_Scenes/SmartLibrary.unity")
             scene = EditorSceneManager.OpenScene("Assets/_Scenes/SmartLibrary.unity", OpenSceneMode.Single);
-        var shelves = GameObject.Find("SmartLibrary").transform.Find("Bookshelves");
-        if (shelves == null) { Debug.LogError("[SolutionDocImporter] 场景缺 Bookshelves"); return; }
 
         var allBooks = UnityEngine.Object.FindObjectsOfType<LibraryBook>(true);
         var byTitle = new Dictionary<string, LibraryBook>();
         foreach (var b in allBooks) { if (!byTitle.ContainsKey(b.title)) byTitle.Add(b.title, b); }
 
-        // 空位:中层(0/1 层)、尚无书脊(非真实书)
-        var free = new List<Transform>();
-        for (int s = 0; s < shelves.childCount; s++) {
-            var shelf = shelves.GetChild(s);
-            for (int b = 0; b < shelf.childCount; b++) {
-                var book = shelf.GetChild(b);
-                if (!book.name.StartsWith("Book_")) continue;
-                var pp = book.name.Split('_');
-                if (int.Parse(pp[2]) > 1) continue;
-                if (book.Find("SpineTitle") != null) continue;
-                free.Add(book);
-            }
-        }
+        // 空槽 = 正文还是占位文案的书。
+        // (旧版用"有没有 SpineTitle 子物体"判断,但 v6.4 书籍电子屏化后全场已无 SpineTitle,
+        //  所有槽位都会被当成空槽,新书就叠到了旧书上 —— 实测 5 格挤两本、5 格空着。)
+        var free = allBooks.Where(IsPlaceholder).ToList();
+        var eye = free.Where(b => OnShelf(b.transform) && NameLevel(b) <= 1)
+                      .OrderBy(b => NameLevel(b)).ThenBy(b => b.slotCode).ToList();
+        var rest = free.Except(eye).OrderBy(b => b.slotCode).ToList();
+        var slots = eye.Concat(rest).ToList();     // 先视平线,再用尽其余占位槽
 
-        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        var plateMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/M_LabelPlate.mat");
-        int added = 0, updated = 0, skipped = 0;
-        int freeIdx = 0;
-
-        foreach (var path in files) {
+        int added = 0, updated = 0, skipped = 0, slotIdx = 0;
+        foreach (var path in files)
+        {
             string fname = Path.GetFileNameWithoutExtension(path);
             string title = (string.IsNullOrEmpty(titlePrefix) ? "" : titlePrefix)
                 + (fname.Length > 3 && char.IsDigit(fname[0]) && fname[1] == '0' && fname[2] == '0' ? fname.Substring(3) : fname);
             string summary = CleanAndPaginate(File.ReadAllText(path, System.Text.Encoding.UTF8));
 
             LibraryBook target;
-            if (byTitle.TryGetValue(title, out target)) {
-                target.summary = summary;
+            if (byTitle.TryGetValue(title, out target))
+            {
+                target.summary = summary;             // 只更新正文,不动位置
                 EditorUtility.SetDirty(target);
+                WriteScreenTitle(target, title);
                 updated++;
                 continue;
             }
-            if (freeIdx >= free.Count) { skipped++; continue; }
-            var slot = free[freeIdx++];
+            if (slotIdx >= slots.Count) { skipped++; continue; }
 
-            var lib = slot.GetComponent<LibraryBook>();
-            lib.title = title;
-            lib.author = "VRlibrary 项目组";
-            lib.summary = summary;
-
-            var pp = slot.name.Split('_');
-            int level = int.Parse(pp[2]);
-            float boardTop = 0.35f + level * 0.9f + 0.03f;
-            float newH = Mathf.Max(0.27f, slot.localScale.y + 0.03f);
-            slot.localScale = new Vector3(0.42f, newH, 0.1f);
-            var p = slot.localPosition;
-            p.y = boardTop + newH * 0.5f; p.z += 0.095f;
-            slot.localPosition = p;
-
-            BuildSpineLabel(slot, font, plateMat, title);
+            var slot = slots[slotIdx++];
+            slot.title = title;
+            slot.author = "VRlibrary 项目组";
+            slot.summary = summary;
+            WriteScreenTitle(slot, title);            // 电子屏书名(不改 transform:书本来就在格子里)
+            VRLibraryFix.FitOne(slot);                // 长书名收进屏面
+            EditorUtility.SetDirty(slot);
             added++;
         }
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveOpenScenes();
-        Debug.Log(string.Format("[SolutionDocImporter] 完成:新增 {0} 本,更新 {1} 本,槽位不足跳过 {2} 本。", added, updated, skipped));
+        Debug.Log(string.Format("[SolutionDocImporter] 完成:新增 {0} 本,更新 {1} 本,占位槽不足跳过 {2} 本(剩余可用槽 {3})。",
+            added, updated, skipped, Mathf.Max(0, slots.Count - slotIdx)));
+    }
+
+    /// <summary>把书名写进这本书自己的电子屏 TitleText(每 6 字一行,与全场一致)。</summary>
+    static void WriteScreenTitle(LibraryBook b, string title)
+    {
+        var tm = FindDeep<TextMesh>(b.transform, "TitleText");
+        if (tm == null) { Debug.LogWarning("[SolutionDocImporter] " + b.gameObject.name + " 没有 TitleText,屏上不会显示书名"); return; }
+        int per = 6;
+        var sb = new StringBuilder();
+        for (int i = 0; i < title.Length; i++)
+        {
+            sb.Append(title[i]);
+            if ((i + 1) % per == 0 && i < title.Length - 1) sb.Append('\n');
+        }
+        tm.text = sb.ToString();
+        EditorUtility.SetDirty(tm);
+    }
+
+    static T FindDeep<T>(Transform root, string name) where T : Component
+    {
+        foreach (var c in root.GetComponentsInChildren<T>(true)) if (c.gameObject.name == name) return c;
+        return null;
+    }
+
+    /// <summary>正文仍是占位文案 = 这本书还没被真实馆藏占用(实测精确对应 235 本)。</summary>
+    static bool IsPlaceholder(LibraryBook b)
+    {
+        if (b == null) return false;
+        string s = b.summary ?? "";
+        return s.StartsWith("占位书籍") || s.StartsWith("二层回廊藏书") || s.StartsWith("详情待录入");
+    }
+
+    static bool OnShelf(Transform t)
+    {
+        while (t != null)
+        {
+            if (t.name == "Bookshelves" || t.name == "Shelves2F") return true;
+            t = t.parent;
+        }
+        return false;
+    }
+
+    /// <summary>Book_&lt;架&gt;_&lt;层&gt;_&lt;序&gt; / Book2F_&lt;区排&gt;_&lt;层&gt;_&lt;序&gt; 里的层号。</summary>
+    static int NameLevel(LibraryBook b)
+    {
+        var p = b.gameObject.name.Split('_');
+        int v;
+        return p.Length >= 4 && int.TryParse(p[p.Length - 2], out v) ? v : 9;
     }
 
     static string CleanAndPaginate(string raw)
@@ -132,37 +164,5 @@ public static class SolutionDocImporter
             if (chars >= 400) { sb.Append('\f'); chars = 0; }
         }
         return sb.ToString();
-    }
-
-    static void BuildSpineLabel(Transform book, Font font, Material plateMat, string title)
-    {
-        var stGo = new GameObject("SpineTitle");
-        stGo.transform.SetParent(book, false);
-        var st = stGo.transform;
-        var tm = st.gameObject.AddComponent<TextMesh>();
-        tm.font = font; tm.fontSize = 48; tm.characterSize = 0.015f;
-        tm.anchor = TextAnchor.MiddleCenter; tm.alignment = TextAlignment.Center;
-        tm.color = new Color(0.75f, 0.98f, 1f);
-        string plain = title.Length > 12 ? title.Substring(0, 12) + "…" : title;
-        var sbT = new StringBuilder();
-        for (int c = 0; c < plain.Length; c++) {
-            sbT.Append(plain[c]);
-            if ((c + 1) % 4 == 0 && c < plain.Length - 1) sbT.Append('\n');
-        }
-        tm.text = sbT.ToString();
-        st.localRotation = Quaternion.Euler(0f, 180f, 0f);   // TextMesh 从 -Z 面阅读
-        st.localPosition = new Vector3(0f, 0f, 0.054f);
-        var mr = st.gameObject.GetComponent<MeshRenderer>();
-        if (mr != null && tm.font != null) mr.sharedMaterial = tm.font.material;
-
-        int lines = 1;
-        foreach (char ch in tm.text) if (ch == '\n') lines++;
-        var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        plate.name = "LabelPlate"; plate.transform.SetParent(stGo.transform, false);
-        plate.transform.localPosition = new Vector3(0f, 0f, 0.001f);
-        plate.transform.localScale = new Vector3(0.44f, lines * 0.078f + 0.02f, 0.002f);
-        plate.GetComponent<MeshRenderer>().sharedMaterial = plateMat;
-        var pc = plate.GetComponent<BoxCollider>();
-        if (pc != null) UnityEngine.Object.DestroyImmediate(pc);
     }
 }
