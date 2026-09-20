@@ -138,7 +138,8 @@ public class BookSearchController : MonoBehaviour
         var neon = new Material(Shader.Find("Universal Render Pipeline/Lit"));
         neon.SetColor("_BaseColor", Color.black);
         neon.EnableKeyword("_EMISSION");
-        neon.SetColor("_EmissionColor", new Color(0f, 2.4f, 3f));
+        // 极光蓝 rgb(120,199,210) 按原发光量放大;改了要同步 VRLibrary/灯色 那套目标色
+        neon.SetColor("_EmissionColor", new Color(1.27f, 2.10f, 2.22f));
         mr.sharedMaterial = neon;
         Destroy(marker, 10f);
         Destroy(neon, 10f);

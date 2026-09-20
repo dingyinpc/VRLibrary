@@ -160,10 +160,24 @@ public static class VRLibraryAudit
         var p = parts[0].Split(','); var r = parts[1].Split(',');
         var sv = SceneView.lastActiveSceneView;
         if (sv == null) { Debug.LogError("[VRLibraryAudit] 没有可用的 Scene 视图窗口"); return; }
-        sv.LookAt(new Vector3(p[0].ToF(), p[1].ToF(), p[2].ToF()),
-                  Quaternion.Euler(r[1].ToF(), r[0].ToF(), 0f), parts[2].ToF(), false);
+        // 不用 sv.LookAt():它把落位推迟到下一帧,当场读 sv.camera 永远是 (0,0,0),等于闭眼取景
+        var pivot = new Vector3(p[0].ToF(), p[1].ToF(), p[2].ToF());
+        var rot = Quaternion.Euler(r[1].ToF(), r[0].ToF(), 0f);
+        float size = parts[2].ToF();
+        sv.orthographic = false;
+        sv.pivot = pivot;
+        sv.rotation = rot;
+        sv.size = size;
         sv.Repaint();
-        Debug.Log("[VRLibraryAudit] 已取景到 " + parts[0] + " 朝向 " + parts[1]);
+        // 实测:SceneView 相机到 pivot 的距离是 size 的两倍,不是 size
+        var camPos = pivot - rot * Vector3.forward * (size * 2f);
+        var msg = "[取景] 视点 " + parts[0] + " 朝向 " + parts[1] + " size " + parts[2]
+            + " → 相机 " + camPos.ToString("F2") + " 看向 " + (pivot - camPos).normalized.ToString("F2")
+            + " 仰角 " + (Mathf.Asin(Mathf.Clamp((pivot.y - camPos.y) / (size * 2f), -1f, 1f)) * Mathf.Rad2Deg).ToString("F1")
+            + "° 正交=" + sv.orthographic + " FOV=" + sv.camera.fieldOfView.ToString("F1")
+            + " 近远=" + sv.camera.nearClipPlane.ToString("F2") + "/" + sv.camera.farClipPlane.ToString("F1");
+        System.IO.File.AppendAllText("Logs/frame.log", msg + "\n");
+        Debug.Log(msg);
     }
 
     static float ToF(this string s)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Events;
@@ -179,12 +180,15 @@ public static class VRLibrarySetup
         var matWall    = MakeMat("M_Wall",    new Color(0.070f, 0.080f, 0.100f), 0.30f, 0.25f);
         var matShelf   = MakeMat("M_Shelf",   new Color(0.100f, 0.110f, 0.130f), 0.60f, 0.40f);
         var matMetal   = MakeMat("M_Metal",   new Color(0.120f, 0.130f, 0.160f), 0.85f, 0.55f);
-        var matCyan    = MakeMat("M_NeonCyan",    Color.black, 0f, 0f, new Color(0.00f, 2.40f, 3.00f));
-        var matMagenta = MakeMat("M_NeonMagenta", Color.black, 0f, 0f, new Color(2.60f, 0.40f, 1.80f));
-        var matPad     = MakeMat("M_TeleportPad", Color.black, 0f, 0f, new Color(0.20f, 1.60f, 1.80f));
-        var matLightBar= MakeMat("M_LightBar",    Color.black, 0f, 0f, new Color(1.60f, 1.80f, 2.20f));
-        var matGrid    = MakeMat("M_GridLine",    Color.black, 0f, 0f, new Color(0.00f, 2.20f, 2.60f));
-        var matScreen  = MakeMat("M_ScreenDark",  new Color(0.02f, 0.04f, 0.07f), 0.2f, 0.6f, new Color(0.05f, 0.15f, 0.30f));
+        // ⚠ 下面这些 _EmissionColor 数值**就是 VRLibrary/灯色 替换后的磁盘终值**(照抄精度)。
+        //    改灯色请走 VRLibrary/灯色 菜单,然后把新值回写到这里;
+        //    只改一处会出现"跑一次重建就把全场灯色冲回旧配色"或"替换完重建又被改回来"。
+        var matCyan    = MakeMat("M_NeonCyan",    Color.black, 0f, 0f, new Color(1.0140814f, 1.681685f, 1.7746425f));
+        var matMagenta = MakeMat("M_NeonMagenta", Color.black, 0f, 0f, new Color(1.0356474f, 0.7558556f, 0.8686075f));
+        var matPad     = MakeMat("M_TeleportPad", Color.black, 0f, 0f, new Color(0.8634811f, 1.4319395f, 1.511092f));
+        var matLightBar= MakeMat("M_LightBar",    Color.black, 0f, 0f, new Color(1.5384961f, 1.8421468f, 1.963607f));
+        var matGrid    = MakeMat("M_GridLine",    Color.black, 0f, 0f, new Color(0.9238933f, 1.532123f, 1.6168132f));
+        var matScreen  = MakeMat("M_ScreenDark",  new Color(0.02f, 0.04f, 0.07f), 0.2f, 0.6f, new Color(0.09152192f, 0.15177384f, 0.16016336f));
 
         var bookMats = new Material[6];
         Color[] bookColors =
@@ -392,6 +396,15 @@ public static class VRLibrarySetup
         Cylinder(stool.transform, "Seat", new Vector3(0f, 0.55f, 0f), new Vector3(0.5f, 0.04f, 0.5f), matMetal);
         Cylinder(stool.transform, "Leg", new Vector3(0f, 0.27f, 0f), new Vector3(0.08f, 0.26f, 0.08f), matMetal);
         Cylinder(stool.transform, "Base", new Vector3(0f, 0.02f, 0f), new Vector3(0.32f, 0.02f, 0.32f), matMetal);
+
+        // —— Blender 工单 A:上面那批 Cube 只是占位,有真模型就当场换掉(落位算法与菜单同一份)。
+        // 台面上那三样配件(书目屏/灯杆/灯头)是手摆的、本生成器从没造过,所以从零重建不需要"跟桌降高"。
+        var notes = new List<string>();
+        PropsSetup.PlaceGenerated(table.transform, PropsSetup.Table,
+            new[] { "Top", "GlowRing", "Leg", "Base" }, "TableMesh", notes);
+        PropsSetup.PlaceGenerated(stool.transform, PropsSetup.Stool,
+            new[] { "Seat", "Leg", "Base", "StoolRing" }, "StoolMesh", notes);
+        foreach (var n in notes) Debug.Log("[室内构件·生成器 " + table.name + "] " + n);
     }
 
     static void BuildServiceDesk(Transform root, Material matMetal, Material matCyan, Material matMagenta, Material matScreen)
@@ -495,6 +508,15 @@ public static class VRLibrarySetup
         ring.transform.localScale = new Vector3(1.35f, 0.008f, 1.35f);
         var ringMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/M_NeonMagenta.mat");
         if (ringMat != null) ring.GetComponent<MeshRenderer>().sharedMaterial = ringMat;
+
+        // —— Blender 工单 B:整块服务台(屏框+底座霓虹都在模型里),所以换掉时连 Pedestal 和霓虹环一起删。
+        // 换完必须重新落座屏幕:旧屏位是照着"Cube 柱子 + 悬浮屏"摆的,新屏框中心/倾角都由模型决定。
+        // 搜索面板 SearchPanel 是手摆的、本生成器不造,所以这里只会对到 InfoCanvas 一块。
+        var notes = new List<string>();
+        if (PropsSetup.PlaceGenerated(kiosk.transform, PropsSetup.Kiosk,
+                new[] { "Pedestal", "KioskGlowRing" }, "KioskMesh", notes))
+            PropsSetup.SeatCanvasesGenerated(kiosk.transform, notes);
+        foreach (var n in notes) Debug.Log("[室内构件·生成器 CentralKiosk] " + n);
     }
 
     static void MakePad(Transform root, string name, Vector3 pos)

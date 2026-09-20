@@ -19,6 +19,16 @@ public static class VRLibraryFloorUpgrade
     const string RootName = "SmartLibrary";
     const string MatDir = "Assets/Materials";
 
+    // Blender 出的整块地毯(由菜单 VRLibrary/导入Carpet地毯(贴图+材质) 拷进来并建材质)。
+    // 地毯建模工具在旧参考工程之外:E:\Blender\Blender工程\carpet。
+    const string CarpetDir = "Assets/Textures/Carpet";
+    const string ReadingFbx = CarpetDir + "/SM_Carpet_Reading_01.fbx";
+    const string ReadingBody = MatDir + "/M_CarpetReading.mat";
+    const string ReadingTrim = MatDir + "/M_CarpetReading_Trim.mat";
+    const string ServiceFbx = CarpetDir + "/SM_Carpet_Service_01.fbx";
+    const string ServiceBody = MatDir + "/M_CarpetService.mat";
+    const string ServiceTrim = MatDir + "/M_CarpetService_Trim.mat";
+
     [MenuItem("VRLibrary/精装修地面(图书馆风)")]
     public static void UpgradeFloorFromMenu()
     {
@@ -171,22 +181,84 @@ public static class VRLibraryFloorUpgrade
         }
     }
 
-    static void BuildReadingCarpet(Transform f, Material carpet, Material trim)
+    static void BuildReadingCarpet(Transform f, Material cubeCarpet, Material cubeTrim)
     {
         var c = NewChild(f, "ReadingCarpet");
-        Box(c, "Carpet", new Vector3(13f, 0.033f, 0f), new Vector3(7.4f, 0.008f, 18.6f), carpet);
+        // 首选 Blender 出的整块地毯:包边已在 mesh 里,发光走第 2 材质槽的 _EmissionColor。
+        if (PlaceCarpet(c, "Carpet", ReadingFbx, ReadingBody, ReadingTrim,
+                new Vector3(13f, 0.029f, 0f), new Vector3(7.4f, 0.013f, 18.6f))) return;
+
+        // 退路:没跑过 VRLibrary/导入Carpet地毯(贴图+材质) → 退回老 Cube 拼法,整链重建仍有地毯。
+        Debug.LogWarning("[VRLibraryFloor] 找不到 " + ReadingFbx + " 或其两个材质,阅读区地毯退回 Cube。"
+            + "要真资产请先跑菜单 VRLibrary/导入Carpet地毯(贴图+材质)。");
+        Box(c, "Carpet", new Vector3(13f, 0.033f, 0f), new Vector3(7.4f, 0.008f, 18.6f), cubeCarpet);
         // 霓虹包边
-        Box(c, "Trim_W", new Vector3(9.33f, 0.0395f, 0f), new Vector3(0.035f, 0.005f, 18.72f), trim);
-        Box(c, "Trim_E", new Vector3(16.67f, 0.0395f, 0f), new Vector3(0.035f, 0.005f, 18.72f), trim);
-        Box(c, "Trim_N", new Vector3(13f, 0.0395f, -9.36f), new Vector3(7.34f, 0.005f, 0.035f), trim);
-        Box(c, "Trim_S", new Vector3(13f, 0.0395f, 9.36f), new Vector3(7.34f, 0.005f, 0.035f), trim);
+        Box(c, "Trim_W", new Vector3(9.33f, 0.0395f, 0f), new Vector3(0.035f, 0.005f, 18.72f), cubeTrim);
+        Box(c, "Trim_E", new Vector3(16.67f, 0.0395f, 0f), new Vector3(0.035f, 0.005f, 18.72f), cubeTrim);
+        Box(c, "Trim_N", new Vector3(13f, 0.0395f, -9.36f), new Vector3(7.34f, 0.005f, 0.035f), cubeTrim);
+        Box(c, "Trim_S", new Vector3(13f, 0.0395f, 9.36f), new Vector3(7.34f, 0.005f, 0.035f), cubeTrim);
     }
 
-    static void BuildServiceMat(Transform f, Material carpet, Material magenta)
+    static void BuildServiceMat(Transform f, Material cubeCarpet, Material cubeTrim)
     {
         var m = NewChild(f, "ServiceMat");
-        Box(m, "Mat", new Vector3(0f, 0.033f, -16f), new Vector3(4.4f, 0.008f, 3.6f), carpet);
-        Box(m, "AccentLine", new Vector3(0f, 0.0395f, -15.05f), new Vector3(3.4f, 0.005f, 0.05f), magenta);
+        if (PlaceCarpet(m, "Mat", ServiceFbx, ServiceBody, ServiceTrim,
+                new Vector3(0f, 0.029f, -16f), new Vector3(4.4f, 0.013f, 3.6f))) return;
+
+        Debug.LogWarning("[VRLibraryFloor] 找不到 " + ServiceFbx + " 或其两个材质,服务台地毯退回 Cube。");
+        Box(m, "Mat", new Vector3(0f, 0.033f, -16f), new Vector3(4.4f, 0.008f, 3.6f), cubeCarpet);
+        Box(m, "AccentLine", new Vector3(0f, 0.0395f, -15.05f), new Vector3(3.4f, 0.005f, 0.05f), cubeTrim);
+    }
+
+    /// <summary>
+    /// 摆一块 Blender 地毯。落点 y 是**毯底**高度(资产原点已压到底面),
+    /// 毯面顶 = y+0.008 = 0.037、包边顶 = y+0.013 = 0.042 —— 阅读区桌椅的落点认的是 0.037。
+    /// FBX 导出虽是 -Z Forward/Y Up,但实测 Unity 导入器没把 Z-up→Y-up 转掉(厚度仍在 Z、
+    /// 长边立在 Y),所以这里按交付说明 §3 的 Unity=(X, Z, -Y) 手动绕 X 转 -90°。
+    /// 资产或材质缺失时返回 false,调用方退回 Cube 拼法。
+    /// </summary>
+    static bool PlaceCarpet(Transform parent, string name, string fbxPath,
+        string bodyMatPath, string trimMatPath, Vector3 pos, Vector3 expectSize)
+    {
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
+        var body = AssetDatabase.LoadAssetAtPath<Material>(bodyMatPath);
+        var trim = AssetDatabase.LoadAssetAtPath<Material>(trimMatPath);
+        if (prefab == null || body == null || trim == null) return false;
+
+        var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+        inst.name = name;
+        inst.transform.SetParent(parent, false);
+        inst.transform.localPosition = pos;
+        inst.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+        inst.transform.localScale = Vector3.one;
+
+        var r = inst.GetComponentInChildren<MeshRenderer>();
+        if (r == null) { Object.DestroyImmediate(inst); return false; }
+
+        int slots = Mathf.Max(2, r.sharedMaterials.Length);
+        var mats = new Material[slots];
+        mats[0] = body;
+        for (int i = 1; i < slots; i++) mats[i] = trim;
+        if (r.sharedMaterials.Length != 2)
+            Debug.LogWarning("[VRLibraryFloor] " + name + " 的 submesh 数 = " + r.sharedMaterials.Length
+                + " 而不是 2 → 包边可能不发光");
+        r.sharedMaterials = mats;
+        r.shadowCastingMode = ShadowCastingMode.Off;
+        r.receiveShadows = true;
+
+        var col = inst.GetComponentInChildren<Collider>(true);
+        if (col != null) Object.DestroyImmediate(col);
+        // 渲染器可能挂在子节点上,静态标记必须逐物体设,否则漏掉的那份不参与合批
+        foreach (var t in inst.GetComponentsInChildren<Transform>(true)) t.gameObject.isStatic = true;
+
+        var b = r.bounds;
+        if (Mathf.Abs(b.size.x - expectSize.x) > 0.002f || Mathf.Abs(b.size.y - expectSize.y) > 0.002f
+            || Mathf.Abs(b.size.z - expectSize.z) > 0.002f)
+            Debug.LogWarning("[VRLibraryFloor] " + name + " 世界尺寸 " + b.size
+                + " 与期望 " + expectSize + " 不符 → 朝向或 Blender 那侧的轴向改了,检查 PlaceCarpet 的 -90°");
+        Debug.Log("[VRLibraryFloor] " + name + " 用真地毯网格,世界包围盒 " + b.size + " y "
+            + b.min.y.ToString("0.000") + "~" + b.max.y.ToString("0.000"));
+        return true;
     }
 
     // ------------------------------------------------------------ 工具
