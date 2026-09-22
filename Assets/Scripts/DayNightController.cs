@@ -37,7 +37,15 @@ public class DayNightController : MonoBehaviour
     void Awake()
     {
         Instance = this;
-        sky = RenderSettings.skybox;
+        // RenderSettings.skybox 是 .mat **资产本身**,在它上面 SetColor/SetFloat 会直接改磁盘那份,
+        // 而 Play 里对资产的修改退出后不回滚(实测跑一次冒烟测试就把天空盒永久留在"白天")。
+        // 所以:克隆一份运行时实例挂回去,原始资产永不被动。
+        var src = RenderSettings.skybox;
+        if (src != null)
+        {
+            sky = new Material(src) { name = src.name + " (runtime)" };
+            RenderSettings.skybox = sky;
+        }
         nAmb = RenderSettings.ambientLight;
         nFogC = RenderSettings.fogColor;
         nFogD = RenderSettings.fogDensity;
@@ -53,7 +61,11 @@ public class DayNightController : MonoBehaviour
         }
     }
 
-    void OnDestroy() { if (Instance == this) Instance = null; }
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+        if (sky != null) Destroy(sky);        // Awake 里克隆的那份运行时实例,别留孤儿
+    }
 
     public void ToggleLights()
     {

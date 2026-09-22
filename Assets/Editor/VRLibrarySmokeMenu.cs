@@ -16,17 +16,41 @@ public static class VRLibrarySmokeMenu
     [MenuItem("VRLibrary/冒烟测试(进Play自动跑)")]
     public static void Run()
     {
+        Start("");
+    }
+
+    /// <summary>
+    /// 预览模式:进 Play 只播露台示例片并停一会儿,给远程截图留出窗口,到点自己退出。
+    /// 冒烟测试跑完就 isPlaying=false,人没法在外面卡进那两秒的播放窗口,所以单独开一条路。
+    /// </summary>
+    [MenuItem("VRLibrary/露台示例片预览(进Play,播完自动退出)")]
+    public static void Preview()
+    {
+        Start("preview=45");
+    }
+
+    /// <summary>编辑器编译后进程 CWD 会漂到 Library/Bee/... 底下,相对路径的报告会被写进没人看的目录。</summary>
+    static string Abs(string rel)
+    {
+        return System.IO.Path.Combine(System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath),
+            rel.Replace('/', System.IO.Path.DirectorySeparatorChar));
+    }
+
+    static void Start(string request)
+    {
         if (EditorApplication.isPlaying)
         {
             Debug.LogError("[Smoke] 已在 Play 中,先退出再跑");
             return;
         }
-        Directory.CreateDirectory("Logs");
-        File.WriteAllText(kRequest, System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        if (File.Exists(kReport)) File.Delete(kReport);
+        string req = Abs(kRequest), rep = Abs(kReport);
+        Directory.CreateDirectory(Abs("Logs"));
+        File.WriteAllText(req, request + " " + System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        // 必须先删旧报告:留着它,一旦 Play 没真跑起来,读到的就是上一轮的绿(2026-09-22 中过一次)
+        if (File.Exists(rep)) File.Delete(rep);
 
         EditorApplication.isPlaying = true;
-        Debug.Log("[Smoke] 已进入 Play,冒烟链路将在场景加载后自动执行 → " + kReport);
+        Debug.Log("[Smoke] 已进入 Play(" + (request == "" ? "冒烟" : request) + ")→ " + rep);
     }
 }
 #endif

@@ -264,12 +264,14 @@ public static class VRLibraryAudit
         var books = all.SelectMany(g => g.GetComponents<LibraryBook>()).ToList();
         var mismatch = new List<string>();
         var spill = new List<string>();
+        var mangled = new List<string>();
         int noScreen = 0;
         foreach (var b in books)
         {
             var tm = FindDeep<TextMesh>(b.transform, "TitleText");
             var disp = FindDeep<MeshRenderer>(b.transform, "Display");
             if (tm == null || disp == null) { noScreen++; if (mismatch.Count < kSample) mismatch.Add(Chain(b.gameObject) + " 找不到 TitleText/Display"); continue; }
+            MangledLines(b, tm, mangled);
             string want = b.title.Replace("\n", "").Replace(" ", "");
             string got = tm.text.Replace("\n", "").Replace(" ", "").Replace("…", "");
             if (!got.StartsWith(want.Substring(0, Math.Min(4, want.Length))))
@@ -278,17 +280,55 @@ public static class VRLibraryAudit
             {
                 var tmr = tm.GetComponent<MeshRenderer>();
                 if (tmr == null) { noScreen++; if (mismatch.Count < kSample) mismatch.Add(Chain(b.gameObject) + " TitleText 没有 MeshRenderer"); continue; }
-                var a = tmr.bounds;
-                var bnd = disp.bounds;
+                // 判据要落在**屏自己的平面**上。阅览区桌面样书、讲台样书是平躺的:屏面摊在 x–z 里,
+                // 世界 y 只剩十几毫米的板厚 —— 拿世界 x/y 比 AABB 等于拿厚度判字宽,
+                // baseline 里 7 条"溢出"有 6 条就是这么误报的(坑 27 同族:先证伪判据再信汇总数)。
+                var dtr = disp.transform;
+                var u = dtr.right; var v = dtr.up;
+                var tBox = tmr.bounds; var sBox = disp.bounds;
+                float tu = Extent(tBox, u), tv = Extent(tBox, v);
+                float su = Extent(sBox, u), sv = Extent(sBox, v);
+                float du = Mathf.Abs(Vector3.Dot(tBox.center - sBox.center, u));
+                float dv = Mathf.Abs(Vector3.Dot(tBox.center - sBox.center, v));
                 float tol = 0.012f;
-                if (a.max.y > bnd.max.y + tol || a.min.y < bnd.min.y - tol ||
-                    a.max.x > bnd.max.x + tol || a.min.x < bnd.min.x - tol)
-                    spill.Add(Chain(b.gameObject) + " 标题盒 " + Fmt(a.size) + " vs 屏盒 " + Fmt(bnd.size) + " 标题=" + Qu(tb(b.title)));
+                if (du + tu > su + tol || dv + tv > sv + tol)
+                    spill.Add(Chain(b.gameObject) + string.Format(
+                        " 标题在屏面上 {0:0.000}×{1:0.000} m(屏面 {2:0.000}×{3:0.000},偏移 {4:0.000}/{5:0.000}) 标题={6}",
+                        tu * 2f, tv * 2f, su * 2f, sv * 2f, du, dv, Qu(tb(b.title))));
             }
         }
         Report(sb, noScreen == 0, "无电子屏子物体的书", noScreen, null);
         Report(sb, mismatch.Count == 0, "屏上文字与 LibraryBook.title 不一致", mismatch.Count, mismatch.Take(kSample).ToList());
         Report(sb, spill.Count == 0, "标题超出屏面(会被裁或压到边框外)", spill.Count, spill.Take(kSample).ToList());
+        Report(sb, mangled.Count == 0, "标题把英文单词/数字串腰斩", mangled.Count, mangled.Take(kSample).ToList());
+    }
+
+    /// <summary>
+    /// 屏上换行有没有把英文单词/数字串从中间切断。
+    /// 只看"行尾那一截拉丁/数字 + 行首那一截"在原书名里**本来是不是同一个词**;
+    /// 行首是大写字母的不算 —— 那是驼峰边界(Cinemachine|Brain),是**故意**拆的。
+    /// </summary>
+    static void MangledLines(LibraryBook b, TextMesh tm, List<string> outp)
+    {
+        var lines = (tm.text ?? "").Split('\n');
+        string raw = (b.title ?? "").Replace("\n", "");
+        for (int i = 0; i + 1 < lines.Length; i++)
+        {
+            string a = lines[i], c = lines[i + 1];
+            int s = a.Length; while (s > 0 && WordChar(a[s - 1])) s--;
+            int e = 0; while (e < c.Length && WordChar(c[e])) e++;
+            string ta = a.Substring(s), hd = c.Substring(0, e);
+            if (ta.Length == 0 || hd.Length == 0 || char.IsUpper(hd[0])) continue;
+            if (!raw.Contains(ta + hd)) continue;         // 原书名里这里本来就有空格/连字符 → 真边界
+            if (outp.Count < kSample * 4)
+                outp.Add(Chain(b.gameObject) + " 「" + ta + "↔" + hd + "」原词「" + ta + hd + "」");
+        }
+    }
+
+    /// <summary>只认 ASCII 字母与数字 —— `_ - .` 是**分隔符**,在那里换行不算把词切断(baseline 里 2 条误报就是这么来的)。</summary>
+    static bool WordChar(char x)
+    {
+        return (x >= 'a' && x <= 'z') || (x >= 'A' && x <= 'Z') || (x >= '0' && x <= '9');
     }
 
     static void CheckSlotCodes(StringBuilder sb, List<GameObject> all)
@@ -492,6 +532,12 @@ public static class VRLibraryAudit
         return all.Sum(g => g.GetComponents<T>().Length);
     }
     static bool IsNaN(Vector3 v) { return float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z); }
+    /// <summary>世界 AABB 沿任意轴投影后的半边长(对轴对齐的框就是精确半宽)。</summary>
+    static float Extent(Bounds box, Vector3 axis)
+    {
+        var e = box.extents;
+        return Mathf.Abs(axis.x) * e.x + Mathf.Abs(axis.y) * e.y + Mathf.Abs(axis.z) * e.z;
+    }
     static string Fmt(Vector3 v) { return "(" + v.x.ToString("F3") + "," + v.y.ToString("F3") + "," + v.z.ToString("F3") + ")"; }
     static string tb(string x) { return (x ?? "").Replace("\n", "").Replace("\r", ""); }
     static string Qu(string x) { return "「" + (x.Length > 22 ? x.Substring(0, 22) + "…" : x) + "」"; }

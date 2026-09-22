@@ -521,15 +521,109 @@ public static class VRLibraryFix
         t.localScale = new Vector3(s.x * by.x, s.y * by.y, s.z * by.z);
     }
 
+    /// <summary>
+    /// 词边界换行(全场唯一烘焙书名文本的路径)。行宽单位:汉字 1.0、拉丁/数字 0.55。
+    ///  · 英文单词与数字串**整块**挪到下一行,中文逐字断行;
+    ///  · 一个词本身就比一行还长 → 先在驼峰边界与 `_ - .` 后拆(CinemachineBrain → Cinemachine|Brain),
+    ///    拆完还超长才按宽度硬切。
+    /// 这里以前是"每 per 个字符硬切",所以 v7.11 提交说明里的智能换行其实**没有留下代码** ——
+    /// 重跑本菜单就会把 Cinema/chineB/rain 式腰斩覆盖回场景(2026-09-22 实测过)。
+    /// </summary>
     static string Wrap(string s, int per)
     {
-        var sb = new StringBuilder();
-        for (int i = 0; i < s.Length; i++)
+        var lines = new List<string>();
+        var cur = new StringBuilder();
+        float w = 0f;
+        System.Action flush = () => { if (cur.Length > 0) { lines.Add(cur.ToString()); cur.Length = 0; } w = 0f; };
+
+        foreach (var t in Tokenize(s))
         {
-            sb.Append(s[i]);
-            if ((i + 1) % per == 0 && i < s.Length - 1) sb.Append('\n');
+            float tw = Width(t);
+            if (w + tw > per && w > 0f) flush();
+
+            if (tw > per && IsWordRun(t))
+            {
+                foreach (var piece in Pieces(t))
+                {
+                    string p = piece;
+                    if (p.Length == 0) continue;
+                    if (Width(p) > per)
+                    {
+                        if (Width(p) <= per * 1.10f)
+                        {
+                            // 只超一成 → 整块独占一行,让下面的二分搜索去压字号。宁可字小,不可把词腰斩。
+                            if (w > 0f) flush();
+                            lines.Add(p);
+                            continue;
+                        }
+                        while (Width(p) > per)   // 连驼峰块都放不下 → 按宽度硬切
+                        {
+                            int n = 1;
+                            while (n < p.Length && Width(p.Substring(0, n + 1)) <= per) n++;
+                            if (w > 0f) flush();
+                            lines.Add(p.Substring(0, n));
+                            p = p.Substring(n);
+                        }
+                        if (p.Length == 0) continue;
+                    }
+                    if (w + Width(p) > per && w > 0f) flush();
+                    cur.Append(p); w += Width(p);
+                }
+                continue;
+            }
+            cur.Append(t); w += tw;
         }
-        return sb.ToString();
+        flush();
+        return string.Join("\n", lines.ToArray());
+    }
+
+    /// <summary>全角字符一字一块;拉丁/数字(含 `_ - .`)连续成块;其余标点各自成块。</summary>
+    static List<string> Tokenize(string s)
+    {
+        var l = new List<string>();
+        for (int i = 0; i < s.Length;)
+        {
+            char c = s[i];
+            if (IsCjk(c)) { l.Add(c.ToString()); i++; continue; }
+            if (IsWordChar(c))
+            {
+                int j = i;
+                while (j < s.Length && IsWordChar(s[j])) j++;
+                l.Add(s.Substring(i, j - i)); i = j; continue;
+            }
+            l.Add(c.ToString()); i++;
+        }
+        return l;
+    }
+
+    /// <summary>把一个长词按驼峰边界与 `_ - .` 切成能独立成行的块。</summary>
+    static List<string> Pieces(string t)
+    {
+        var l = new List<string>();
+        int start = 0;
+        for (int i = 1; i < t.Length; i++)
+        {
+            char p = t[i - 1], c = t[i];
+            bool sep = p == '_' || p == '-' || p == '.' || c == '_' || c == '-' || c == '.';
+            bool camel = char.IsUpper(c) && !char.IsUpper(p) && p != '_' && p != '-' && p != '.';
+            if (sep || camel) { l.Add(t.Substring(start, i - start)); start = i; }
+        }
+        if (start < t.Length) l.Add(t.Substring(start));
+        return l;
+    }
+
+    static bool IsCjk(char c) { return c >= 0x2E80; }
+    static bool IsWordChar(char c)
+    {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+            || c == '_' || c == '-' || c == '.';
+    }
+    static bool IsWordRun(string t) { return t.Length > 1 && IsWordChar(t[0]) && !IsCjk(t[0]); }
+    static float Width(string t)
+    {
+        float w = 0f;
+        for (int i = 0; i < t.Length; i++) w += IsCjk(t[i]) ? 1f : 0.55f;
+        return w;
     }
 
     static bool Fits(Bounds t, Bounds d)
@@ -556,6 +650,59 @@ public static class VRLibraryFix
             t = t.parent;
         }
         return null;
+    }
+
+    /// <summary>
+    /// 四角须知屏里有两块的可读面背对馆心(实测 `GuideBoard`@(+14,+14) 与 `GuideBoard_C3`@(+14,-14),
+    /// 而同批 C1/C2 是朝馆心的)→ 游客只能看到背面透过来的镜像字。判据同坑 26:**可读面 = -forward**。
+    /// 这批角牌全场没有一行生成代码(手摆的,属遗留 13 那类分叉),所以只能就地把朝向摆正。
+    /// </summary>
+    [MenuItem("VRLibrary/修正角牌朝向(只改四角须知屏)")]
+    public static void FixCornerBoards()
+    {
+        log = new StringBuilder();
+        Line("== 修正角牌朝向 ==");
+        var root = GameObject.Find("SmartLibrary");
+        if (root == null) { Line("!! 找不到 SmartLibrary 根节点"); WriteLog(); return; }
+
+        int changed = 0, kept = 0, skipped = 0;
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (!t.name.StartsWith("GuideBoard")) continue;
+            var cv = t.GetComponent<Canvas>();
+            if (cv == null || cv.renderMode != RenderMode.WorldSpace) { skipped++; continue; }
+            var p = t.position;
+            // 只处理四角那种"离中心远且 |x|≈|z|"的牌;贴在导览台两侧的 GuideBoard_Left/Right 不是角牌
+            if (p.magnitude < 10f || Mathf.Abs(Mathf.Abs(p.x) - Mathf.Abs(p.z)) > 1.5f) { skipped++; continue; }
+
+            var before = -t.forward;
+            var want = Quaternion.LookRotation(new Vector3(p.x, 0f, p.z));   // forward 背对馆心 ⇒ 可读面朝馆心
+            if (Quaternion.Angle(t.rotation, want) < 0.5f) { kept++; continue; }
+            Undo.RecordObject(t, "角牌朝向馆心");
+            t.rotation = want;
+            EditorUtility.SetDirty(t);
+            changed++;
+            var after = -t.forward;
+            Line(string.Format("  !! {0,-18} 可读面 {1} → {2}(世界 {3})",
+                Chain(t.gameObject), V3(before), V3(after), p.ToString("F2")));
+        }
+        EditorSceneManager.MarkSceneDirty(root.scene);
+        Line(string.Format("改了 {0} 块,原本就对 {1} 块,不属于角牌 {2} 块 → 保存场景后重跑体检的 M 节复核",
+            changed, kept, skipped));
+        WriteLog();
+    }
+
+    static string V3(Vector3 v) { return string.Format("({0:0.00},{1:0.00},{2:0.00})", v.x, v.y, v.z); }
+
+    /// <summary>追加而不是覆盖:这份日志里还有别的菜单的结果。</summary>
+    static void WriteLog()
+    {
+        if (log == null) return;
+        if (!Directory.Exists("Logs")) Directory.CreateDirectory("Logs");
+        File.AppendAllText(kLog, log.ToString() + Environment.NewLine + "----" + Environment.NewLine,
+            Encoding.UTF8);
+        Debug.Log("[VRLibraryFix] " + log);
+        log = null;
     }
 
     static T DeepChild<T>(Transform root, string name) where T : Component

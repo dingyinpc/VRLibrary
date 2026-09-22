@@ -111,6 +111,57 @@ public static class LightColorSwap
     [MenuItem("VRLibrary/灯色/替换为 白青+极光蓝+芍药粉")]
     static void Apply() { Report(true); }
 
+    /// <summary>
+    /// 灯色替换只写 `_EmissionColor`,从不碰 `_EMISSION` 关键字 —— 于是 GlowMats 里的
+    /// `M_ScreenOn` 是"色配了、关键字没活"的状态,场上其实不发光(坑 22)。
+    /// 本菜单只补接线、不动任何颜色:非黑发光色 → `_EMISSION` + `RealtimeEmissive`。
+    /// 没在 GlowMats 名单、也没接 `_EmissionMap` 的材质一律不碰(那是"没打算发光",不是 bug);
+    /// 发光色为黑的(地板发光开关关掉那种)也只登记不改。
+    /// </summary>
+    [MenuItem("VRLibrary/灯色/补齐发光接线(只补 _EMISSION 与 GI 标记)")]
+    static void FixEmissionWiring()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("== 补齐发光接线 ==");
+        int n = 0;
+        foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets/Materials", "Assets/Skybox" }))
+        {
+            var path = AssetDatabase.GUIDToAssetPath(guid);
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null || !m.HasProperty("_EmissionColor")) continue;
+            bool listed = System.Array.IndexOf(GlowMats, m.name) >= 0;
+            bool hasMap = m.GetTexture("_EmissionMap") != null;
+            if (!listed && !hasMap) continue;
+
+            var ec = m.GetColor("_EmissionColor");
+            if (ec.maxColorComponent <= 0.001f)
+            { sb.AppendLine(string.Format("  {0,-16} 发光色是黑的 → 按「关」处理,不动", m.name)); continue; }
+            bool kw = m.IsKeywordEnabled("_EMISSION");
+            var gi = m.globalIlluminationFlags;
+            if (kw && gi == MaterialGlobalIlluminationFlags.RealtimeEmissive)
+            { sb.AppendLine(string.Format("  {0,-16} 接线已对(发光色 {1})", m.name, Rgb(ec))); continue; }
+
+            Undo.RecordObject(m, "补齐发光接线");
+            m.EnableKeyword("_EMISSION");
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            EditorUtility.SetDirty(m);
+            n++;
+            sb.AppendLine(string.Format("  !! {0,-16} 补上 _EMISSION + RealtimeEmissive(原来 kw={1} gi={2} 发光色 {3})",
+                m.name, kw, gi, Rgb(ec)));
+        }
+        AssetDatabase.SaveAssets();
+        sb.AppendLine("合计补 " + n + " 份(只动接线,颜色一字未改)。重跑 VRLibrary/全场合理化体检 的 J 节复核");
+        Debug.Log(sb.ToString());
+        sb.Insert(0, string.Format("指纹 {0:0.000}  活动场景 {1}\n",
+            EditorApplication.timeSinceStartup, EditorSceneManager.GetActiveScene().path));
+        try
+        {
+            if (!System.IO.Directory.Exists("Logs")) System.IO.Directory.CreateDirectory("Logs");
+            System.IO.File.AppendAllText("Logs/lightswap-report.txt",
+                sb + "\n----\n", new System.Text.UTF8Encoding(false));
+        } catch (System.Exception e) { Debug.LogWarning("[灯色] 报告落盘失败:" + e.Message); }
+    }
+
     static void Report(bool apply)
     {
         var sb = new StringBuilder();

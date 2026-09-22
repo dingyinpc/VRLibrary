@@ -245,7 +245,10 @@ public static class VRLibrarySetup
         // —— 灯光 ——
         var sunGo = new GameObject("Directional Light");
         sunGo.transform.SetParent(root.transform, false);
-        sunGo.transform.rotation = Quaternion.Euler(55f, -35f, 0f);
+        // 俯角 = 月亮仰角:`SkyboxSunSync` 取 `_MoonDir = -light.forward`,所以改这里就是改月亮高度。
+        // v7.18 定案 15°(原 55° 要仰头看,不符合星空露台"稍微抬头一点点就看到月亮");
+        // 方位 -35° 不要动 —— 露台、大屏、锚点全按"月亮在东北 145°"摆,改了净空判据就废了。
+        sunGo.transform.rotation = Quaternion.Euler(15f, -35f, 0f);
         var sun = sunGo.AddComponent<Light>();
         sun.type = LightType.Directional;
         sun.color = new Color(0.72f, 0.82f, 1f);
@@ -438,7 +441,8 @@ public static class VRLibrarySetup
         var rt = canvasGo.GetComponent<RectTransform>();
         rt.sizeDelta = new Vector2(620f, 220f);
         canvasGo.transform.localPosition = new Vector3(0f, 1.75f, 0.15f);
-        canvasGo.transform.localRotation = Quaternion.Euler(25f, 0f, 0f);
+        // 可读面 = -forward:Euler(25,0,0) 会把正字甩到 -Z(朝后墙)。本意是朝馆内 +Z、屏面下压对着柜台前的人
+        canvasGo.transform.localRotation = Quaternion.Euler(-25f, 180f, 0f);
         canvasGo.transform.localScale = Vector3.one * 0.0016f;
         canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
 
@@ -459,7 +463,9 @@ public static class VRLibrarySetup
         Cylinder(kiosk.transform, "Pedestal", new Vector3(0f, 0.5f, 0f), new Vector3(0.6f, 0.5f, 0.6f), matMetal);
         var controller = kiosk.AddComponent<LibraryUIController>();
 
-        // 信息屏 Canvas(面朝玩家出生点 +Z)
+        // 信息屏 Canvas(正字面朝玩家出生点 +Z)
+        // UGUI 世界空间 Canvas 的可读面是 **-forward**,所以"朝 +Z 给游客读"必须带 180° Y;
+        // 只写 Euler(-8,0,0) 造出来的屏正字朝 -Z,游客看到的是背面透过来的镜像字。
         var canvasGo = new GameObject("InfoCanvas", typeof(RectTransform), typeof(Canvas));
         canvasGo.transform.SetParent(kiosk.transform, false);
         var canvas = canvasGo.GetComponent<Canvas>();
@@ -467,7 +473,7 @@ public static class VRLibrarySetup
         var rt = canvasGo.GetComponent<RectTransform>();
         rt.sizeDelta = new Vector2(760f, 460f);
         canvasGo.transform.localPosition = new Vector3(0f, 1.55f, 0.28f);
-        canvasGo.transform.localRotation = Quaternion.Euler(-8f, 0f, 0f);
+        canvasGo.transform.localRotation = Quaternion.Euler(-8f, 180f, 0f);
         canvasGo.transform.localScale = Vector3.one * 0.0016f;
         canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
 
@@ -529,6 +535,15 @@ public static class VRLibrarySetup
         var padMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/M_TeleportPad.mat");
         if (padMat != null) pad.GetComponent<MeshRenderer>().sharedMaterial = padMat;
         pad.AddComponent<TeleportationAnchor>();
+        // Cylinder 原语自带**实心胶囊碰撞体**(缩完是 1.6 m 高 × 1.6 m 宽),立在走道正中就是
+        // 隐形路障 —— 二楼回廊三条走廊各被它堵死 1.7 m(实测见 Logs/floor2-audit.txt)。
+        // 换成贴着盘面的扁盒子:1.6 m 见方照旧打得中瞄准射线,高 5×0.012=0.06 m 直接走过去。
+        // (Unity 没有 CylinderCollider,所以用盒子外接盘子。)
+        var cap = pad.GetComponent<CapsuleCollider>();
+        if (cap != null) Object.DestroyImmediate(cap);
+        var box = pad.AddComponent<BoxCollider>();
+        box.size = new Vector3(1f, 5f, 1f);        // ×localScale(1.6,0.012,1.6) → 1.6×0.06×1.6 m
+        box.center = Vector3.zero;
     }
 
     static void BuildGlobalVolume(Transform root)

@@ -24,3 +24,8 @@ pxr.log
 
 # 整屏诊断图(会拍到无关窗口,不入库)
 Captures/desktop.png
+
+# 露台示例片：从课程录屏转的 60 秒样片（7.2 MB），内容侧产物不入库
+# 换真实片时同样只拷文件，不进仓库；StreamingAssets 目录本身的 .meta 照常提交
+Assets/StreamingAssets/*.mp4
+Assets/StreamingAssets/*.mp4.meta

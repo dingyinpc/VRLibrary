@@ -1,0 +1,22 @@
+{
+  "films": [
+    { "title": "示例片·AB包资源管理器同步加载", "fileName": "film1.mp4", "minutes": 1, "codec": "h264",
+      "genre": "课程录屏示例",
+      "summary": "唐老狮 Unity 就业课「热更新方案 / Lua」第 8 节录屏节选：原片 33 分钟 1080p HEVC，这里截 60 秒转成 720p H.264。放它进来只为验通露台链路：片单→信息卡→自动开播→播控。真实片单到位后整条替换掉。" },
+    { "title": "藏书与检索系统", "fileName": "film2.mp4", "minutes": 9, "codec": "h264",
+      "genre": "技术讲解",
+      "summary": "262 本馆藏的编号配平规则、模糊检索命中后传送到书前的完整链路。" },
+    { "title": "阅读面板与书签", "fileName": "film3.mp4", "minutes": 5, "codec": "h264",
+      "genre": "操作示范",
+      "summary": "抓取开书、分页翻页、书签自动保存与列表跳页的操作演示。" },
+    { "title": "环境控制：灯光与日夜", "fileName": "film4.mp4", "minutes": 7, "codec": "h264",
+      "genre": "操作示范",
+      "summary": "灯光总开关与日夜渐变的联动范围，以及应急霓虹模式的实际效果。" },
+    { "title": "PICO 真机部署", "fileName": "film5.mp4", "minutes": 11, "codec": "h264",
+      "genre": "技术讲解",
+      "summary": "打包三步流程、真机清晰度自检字段含义与帧率标定方法。" },
+    { "title": "星空露台·夜览", "fileName": "film6.mp4", "minutes": 4, "codec": "h264",
+      "genre": "氛围短片",
+      "summary": "露台视角的场馆夜景循环片，用于开场与无人时的待机播放。" }
+  ]
+}

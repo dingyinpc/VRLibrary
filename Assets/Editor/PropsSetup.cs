@@ -239,9 +239,10 @@ public static class PropsSetup
             var rt = t.GetComponent<RectTransform>();
             float w = rt == null ? 0f : rt.rect.width, h = rt == null ? 0f : rt.rect.height;
             float s = (w > 1f && h > 1f) ? Mathf.Min(1.22f / w, 0.74f / h) * 0.98f : 0f;
-            sb.AppendLine(string.Format("  {0} 现 局部{1} 缩 {2:0.00000} rect {3:0}×{4:0}"
-                + " → 换装后要缩成 {5:0.00000} 摆到 (0, {6:0.000}, 0.28) 俯 -8°",
-                name, t.localPosition.ToString("F3"), t.localScale.x, w, h, s, Kiosk.yOffset + 1.55f));
+            sb.AppendLine(string.Format("  {0} 现 局部{1} 缩 {2:0.00000} rect {3:0}×{4:0} 现正字侧 {5}"
+                + " → 换装后要缩成 {6:0.00000} 摆到 (0, {7:0.000}, 0.28) 俯 -8° + 转 180° Y(正字朝 +Z 给游客)",
+                name, t.localPosition.ToString("F3"), t.localScale.x, w, h, ReadSide(t), s,
+                Kiosk.yOffset + 1.55f));
         }
 
         foreach (var p in All) ReportAsset(p, sb);
@@ -399,7 +400,11 @@ public static class PropsSetup
         const float openW = 1.22f, openH = 0.74f;      // 交付说明 §4-B:屏框中央 1.22×0.74 打通
         // 屏框中心/倾角是**模型自己**的局部量,加上实例脚下那个 yOffset 才是本节点的局部量
         var center = new Vector3(0f, Kiosk.yOffset + 1.55f, 0.28f);
-        var tilt = Quaternion.Euler(-8f, 0f, 0f);
+        // UGUI 世界空间 Canvas 的正字面是 **-forward**(默认旋转下相机要在 -Z 才读得到),
+        // 所以"要朝 +Z 给游客读"必须额外转 180° Y。只写 Euler(-8,0,0) 会让正字朝 -Z,
+        // 台子正面(+Z,ledge 那一侧)看到的是背面透过来的镜像 —— 用户报的"面板弄反了"就是它。
+        // Euler(-8,180,0) 与 v7.11 场上那份 (0, 0.9975641, 0.06975647, ~0) 逐分量相同。
+        var tilt = Quaternion.Euler(-8f, 180f, 0f);
         foreach (var name in new[] { "InfoCanvas", "SearchPanel" })
         {
             var t = kiosk.Find(name);
@@ -410,7 +415,8 @@ public static class PropsSetup
             float w = Mathf.Max(rt.rect.width, 1f), h = Mathf.Max(rt.rect.height, 1f);
             float s = Mathf.Min(openW / w, openH / h) * 0.98f;   // 2% 余量:屏框 40 mm 边宽别被压到
             Undo.RecordObject(t, "屏对进新屏框");
-            var want = center + tilt * new Vector3(0f, 0f, name == "SearchPanel" ? 0.02f : 0f);
+            // tilt 里含 180° Y,局部 +Z 已经指向世界 -Z,所以要减号才朝 +Z 游客那侧让出 20 mm
+            var want = center + tilt * new Vector3(0f, 0f, name == "SearchPanel" ? -0.02f : 0f);
             // 写 RectTransform 自己的锚点位置,不写 Transform.localPosition —— 后者只落到了 z:
             // 场景 YAML 里 x/y 存在 m_AnchoredPosition、z 存在 m_LocalPosition,一次 Apply 之后
             // 重开场景 z=0.280/0.2998 都对、俯角和缩放也都对,唯独 y 退回旧值(2.35/1.85)。
@@ -1309,6 +1315,125 @@ public static class PropsSetup
         Debug.Log(sb.ToString());
     }
 
+    // ------------------------------------------------- 6. 服务台屏的出字侧实测(回答"面板弄反了")
+
+    /// <summary>
+    /// "面板弄反了"在截图里只表现为"字是反的",但反的原因有三种,修法互相冲突:
+    /// ① Canvas 自己转了 180°(fwd 左右反号,该换到台子另一侧读);
+    /// ② 父链把朝向带偏(比如 FBX 实例自带 -90° X,fwd 会翻到朝上,看着像"反"其实是躺了);
+    /// ③ 负缩放造成真镜像(fwd 正常但行列式为负,此时字仍朝着对的侧却左右互换,只有 Canvas 转 180 救不了)。
+    /// 所以逐节把链量出来,别拿截图猜。
+    /// </summary>
+    [MenuItem("VRLibrary/服务台面板朝向(只报告)")]
+    public static void ReportPanelFacing()
+    {
+        var sb = NewReport("面板朝向");
+        var root = RequireRoot(sb);
+        if (root == null) { Write(sb); Debug.Log(sb.ToString()); return; }
+        var kiosk = Find(root.transform, "CentralKiosk");
+        if (kiosk == null)
+        {
+            sb.AppendLine("!! 找不到 SmartLibrary 下的 CentralKiosk → 先跑「换上室内构件」");
+            Write(sb); Debug.Log(sb.ToString()); return;
+        }
+
+        sb.AppendLine("  [台身链]");
+        Chain(sb, kiosk);
+        var kids = new List<string>();
+        for (int i = 0; i < kiosk.childCount; i++) kids.Add(kiosk.GetChild(i).name);
+        sb.AppendLine("    直接子物体 " + kiosk.childCount + " 个 [" + string.Join(" ", kids) + "]");
+        var kr = kiosk.GetComponent<MeshRenderer>() ?? kiosk.GetComponentInChildren<MeshRenderer>(true);
+        if (kr == null) sb.AppendLine("    !! 台身链上找不到 MeshRenderer → 模型没在 CentralKiosk 下");
+        else
+            sb.AppendLine(string.Format("    台身 {0}({1}) 包围 x {2:0.000}~{3:0.000}  y {4:0.000}~{5:0.000}  z {6:0.000}~{7:0.000}",
+                NodePath(kr.transform), kr.enabled ? "渲染开" : "!!渲染关",
+                kr.bounds.min.x, kr.bounds.max.x, kr.bounds.min.y, kr.bounds.max.y,
+                kr.bounds.min.z, kr.bounds.max.z));
+        ReportKioskFront(sb);
+
+        // ReturnStatusCanvas 是同一类"用 forward 判方向"的世界空间屏(VRLibrarySetup.cs:440),顺带量
+        foreach (var name in new[] { "InfoCanvas", "SearchPanel", "ReturnStatusCanvas" })
+        {
+            var t = kiosk.Find(name);
+            if (t == null)
+            {
+                t = Find(root.transform, name);
+                if (t == null) { sb.AppendLine("  -- " + name + " 整场景都没有(归还屏只在服务台链上)"); continue; }
+                sb.AppendLine("  [屏] " + name + " 不在 CentralKiosk 直接子级,实际在 " + NodePath(t));
+            }
+            sb.AppendLine("  [屏] " + NodePath(t));
+            Chain(sb, t);
+
+            var f = t.forward;
+            var rg = t.right;
+            var up = t.up;
+            float det = Vector3.Dot(Vector3.Cross(rg, up), f);
+            var rt = t.GetComponent<RectTransform>();
+            float w = rt == null ? 0f : rt.rect.width * t.localScale.x;
+            float h = rt == null ? 0f : rt.rect.height * t.localScale.y;
+            sb.AppendLine(string.Format("    世界欧拉{0} 缩放{1}", t.eulerAngles.ToString("F2"), t.lossyScale.ToString("F4")));
+            sb.AppendLine(string.Format("    fwd{0}  right{1}  up{2}  行列式{3:0.000}→{4}",
+                Fv(f), Fv(rg), Fv(up), det, det < 0f ? "!! 负缩放真镜像" : "手性正常"));
+            sb.AppendLine(string.Format("    世界中心{0} 占 {1:0.00}×{2:0.00} m", t.position.ToString("F3"), w, h));
+            string side = ReadSide(f);
+            var read = -f;
+            sb.AppendLine(string.Format("    判定: 正字只能从 {0} 一侧读(可读面 = -forward,UGUI 的 quad 法线朝 -Z);"
+                + " 站对面看到的是背面透视过来的镜像字。", side));
+            sb.AppendLine(string.Format("      与 +Z 站立点(0,1.3,2.2) 同侧? {0}   与 -Z? {1}",
+                Vector3.Dot(read, new Vector3(0f, 0f, 2.2f) - t.position) > 0f ? "是" : "否",
+                Vector3.Dot(read, new Vector3(0f, 0f, -2.2f) - t.position) > 0f ? "是" : "否"));
+
+            var cv = t.GetComponent<Canvas>();
+            if (cv != null)
+                sb.AppendLine(string.Format("    Canvas {0} planeDistance {1:0.000} sortOrder {2} enabled {3} 自身激活 {4}",
+                    cv.renderMode, cv.planeDistance, cv.sortingOrder, cv.enabled, t.gameObject.activeInHierarchy));
+            int shown = 0;
+            foreach (var tx in t.GetComponentsInChildren<UnityEngine.UI.Text>(true))
+            {
+                if (shown++ >= 4) break;
+                sb.AppendLine(string.Format("      文字[{0}] \"{1}\" 激活 {2}", tx.name,
+                    tx.text.Replace("\n", "\\n"), tx.gameObject.activeInHierarchy));
+            }
+            if (shown == 0) sb.AppendLine("      !! 这块屏下没有任何 UI.Text → 看到的是别的物件");
+        }
+        Write(sb);
+        Debug.Log(sb.ToString());
+    }
+
+    /// <summary>
+    /// 只重摆三块世界空间屏,不碰模型/桌椅/吊顶 —— 朝向这类问题要反复量,跑整条换装链的代价大得多。
+    /// </summary>
+    [MenuItem("VRLibrary/服务台与归还屏重新落座(只改屏)")]
+    public static void ReseatPanels()
+    {
+        var sb = NewReport("屏重新落座");
+        var root = RequireRoot(sb);
+        var kiosk = root == null ? null : root.transform.Find("CentralKiosk");
+        if (kiosk == null) sb.AppendLine("!! 找不到 SmartLibrary/CentralKiosk");
+        else SeatCanvases(kiosk, sb);
+
+        // 归还屏犯的是同一个错:Euler(25,0,0) 的可读面(-forward)朝 -Z,正对着后墙
+        var ret = root == null ? null : Find(root.transform, "ReturnStatusCanvas");
+        if (ret == null) sb.AppendLine("  -- 没有 ReturnStatusCanvas(本场景不带归还台?)");
+        else
+        {
+            Undo.RecordObject(ret, "归还屏掰回 +Z");
+            ret.localRotation = Quaternion.Euler(-25f, 180f, 0f);
+            EditorUtility.SetDirty(ret);
+            Canvas.ForceUpdateCanvases();
+            sb.AppendLine(string.Format("  ReturnStatusCanvas 欧拉{0} → 正字侧 {1}",
+                ret.localEulerAngles.ToString("F1"), ReadSide(ret)));
+        }
+
+        if (root != null)
+        {
+            EditorSceneManager.MarkSceneDirty(root.scene);
+            sb.AppendLine("  已改并标脏 → 接着「保存场景」,再跑复核落盘才会读到新值");
+        }
+        Write(sb);
+        Debug.Log(sb.ToString());
+    }
+
     // ------------------------------------------------------------ 内部:场景侧
 
     static GameObject RequireRoot(StringBuilder sb)
@@ -1351,6 +1476,109 @@ public static class PropsSetup
         }
         return null;
     }
+
+    /// <summary>
+    /// 模型自己的正面落在 Unity 的哪一侧 —— 导入器没做 Z-up→Y-up,实例靠 Euler(-90,0,0) 扶起来,
+    /// 所以资产局部 (x,y,z) 进 Unity 是 (x, z, -y):Blender 的 +y 面 = Unity 的 -Z 面。
+    /// 靠两个只可能长在正面的特征定案:屏框下沿那道 ledge 的**朝顶面**,和法线沿 ±y 的竖直皮谁更外伸。
+    /// </summary>
+    static void ReportKioskFront(StringBuilder sb)
+    {
+        Mesh mesh = null;
+        var objs = AssetDatabase.LoadAllAssetsAtPath(Kiosk.model);
+        if (objs != null)
+            foreach (var o in objs)
+            {
+                var m = o as Mesh;
+                if (m != null && m.vertexCount > 0) mesh = m;
+            }
+        if (mesh == null) { sb.AppendLine("  !! 读不到 " + Kiosk.model + " 的网格 → 判不了模型正面"); return; }
+
+        var v = mesh.vertices;
+        var tri = mesh.triangles;
+        sb.AppendLine("  [模型正面] 资产 " + mesh.name + " 局部包围 " + mesh.bounds.size.ToString("F3")
+            + " 三角 " + (tri.Length / 3));
+        for (int side = 0; side < 2; side++)
+        {
+            float sgn = side == 0 ? 1f : -1f;
+            int up = 0, wall = 0;
+            float upArea = 0f, outMost = 0f;
+            float yMin = 9f, yMax = -9f, xMin = 9f, xMax = -9f, zMin = 9f, zMax = -9f;
+            for (int i = 0; i < tri.Length; i += 3)
+            {
+                var a = v[tri[i]];
+                var b = v[tri[i + 1]];
+                var c = v[tri[i + 2]];
+                var cen = (a + b + c) * 0.3333333f;
+                var nn = Vector3.Cross(b - a, c - a);
+                float area = nn.magnitude * 0.5f;
+                if (area <= 1e-8f) continue;
+                nn /= nn.magnitude;
+                if (sgn * cen.y <= 0f) continue;
+                if (nn.z > 0.9f && cen.z > 1.00f && cen.z < 1.28f)
+                {
+                    up++; upArea += area;
+                    yMin = Mathf.Min(yMin, cen.y); yMax = Mathf.Max(yMax, cen.y);
+                    xMin = Mathf.Min(xMin, cen.x); xMax = Mathf.Max(xMax, cen.x);
+                    zMin = Mathf.Min(zMin, cen.z); zMax = Mathf.Max(zMax, cen.z);
+                }
+                if (sgn * nn.y > 0.9f)
+                {
+                    wall++;
+                    outMost = Mathf.Max(outMost, sgn * cen.y);
+                }
+            }
+            sb.AppendLine(string.Format("    Blender {0}y 侧: ledge 顶面 {1} 片 {2:0.000} m² y{3:0.000}~{4:0.000} x{5:0.000}~{6:0.000} z{7:0.000}~{8:0.000}"
+                + " | 朝{0}y 竖直面 {9} 片,最外伸 y {10:0.000}",
+                side == 0 ? "+" : "-", up, upArea,
+                up == 0 ? 0f : yMin, up == 0 ? 0f : yMax, up == 0 ? 0f : xMin, up == 0 ? 0f : xMax,
+                up == 0 ? 0f : zMin, up == 0 ? 0f : zMax, wall, outMost));
+        }
+        sb.AppendLine("    读法: 台身 1.35×1.35 见方,ledge 只会长在屏框那一面 → 哪一侧有 z 1.00~1.28 的朝上面,"
+            + " 哪一侧就是 Blender 正面;正面 +y → Unity -Z,正面 -y → Unity +Z。");
+    }
+
+    static string NodePath(Transform t)
+    {
+        string s = t.name;
+        for (var p = t.parent; p != null; p = p.parent) s = p.name + "/" + s;
+        return s;
+    }
+
+    /// <summary>自顶向下打印每一节的局部量。朝向问题九成出在链上某一节的旋转或负缩放,链不看全就只能猜。</summary>
+    static void Chain(StringBuilder sb, Transform leaf)
+    {
+        var chain = new List<Transform>();
+        for (var t = leaf; t != null; t = t.parent) chain.Insert(0, t);
+        for (int i = 0; i < chain.Count; i++)
+        {
+            var t = chain[i];
+            string neg = "";
+            if (chain[i].localScale.x < 0f || chain[i].localScale.y < 0f || chain[i].localScale.z < 0f)
+                neg = " !! 负缩放";
+            sb.AppendLine(string.Format("    {0}{1,-14} 局部{2} 欧拉{3} 缩{4}{5}",
+                new string('.', i), t.name, t.localPosition.ToString("F3"),
+                t.localEulerAngles.ToString("F1"), t.localScale.ToString("F4"), neg));
+        }
+    }
+
+    static string Fv(Vector3 v)
+    {
+        return string.Format("({0:0.000},{1:0.000},{2:0.000})", v.x, v.y, v.z);
+    }
+
+    /// <summary>
+    /// UGUI 世界空间 Canvas 的正字侧。**可读面 = -transform.forward**,不是 forward ——
+    /// Canvas 默认旋转下要相机在 -Z 才读得到正字,quad 法线朝 -Z。
+    /// 拿 forward 判方向会把"该转 180° Y"判成"不用转",这就是 v7.16 服务台面板弄反的根因。
+    /// </summary>
+    static string ReadSide(Vector3 fwd)
+    {
+        var v = -fwd;
+        return Mathf.Abs(v.z) > Mathf.Abs(v.x) ? (v.z > 0f ? "+Z" : "-Z") : (v.x > 0f ? "+X" : "-X");
+    }
+
+    static string ReadSide(Transform t) { return ReadSide(t.forward); }
 
     /// <summary>只报告用。**排序前先拷贝** —— 就地 Sort 会打乱别处还在用的 (x,z) 配对。</summary>
     static string FmtSet(List<float> v)

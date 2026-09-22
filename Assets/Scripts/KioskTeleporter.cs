@@ -14,6 +14,9 @@ public class KioskTeleporter : MonoBehaviour
     [Tooltip("传送目标点(空物体,其 forward 即玩家落地后的朝向)")]
     public Transform destination;
 
+    [Tooltip("勾上=落地高度沿用玩家当前值(同层传送)。跨层必须取消勾选,否则传到 3 m 高的二楼板面会把人落在板子里。")]
+    public bool keepRigHeight = true;
+
     /// <summary>点击按钮调用:传送到 destination。</summary>
     public void TeleportToDestination()
     {
@@ -35,7 +38,9 @@ public class KioskTeleporter : MonoBehaviour
         Vector3 camOffset = cam.position - origin.transform.position;
         camOffset.y = 0f;
         Vector3 target = destination.position;
-        origin.transform.position = new Vector3(target.x - camOffset.x, origin.transform.position.y, target.z - camOffset.z);
+        origin.transform.position = new Vector3(target.x - camOffset.x,
+            keepRigHeight ? origin.transform.position.y : target.y,
+            target.z - camOffset.z);
 
         Debug.Log($"[KioskTeleporter] 已传送到 {destination.name}({target})");
     }

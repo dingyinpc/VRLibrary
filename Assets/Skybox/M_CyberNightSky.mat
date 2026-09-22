@@ -46,7 +46,7 @@ Material:
     - _HorizonGlowColor: {r: 0.5, g: 0.65, b: 0.95, a: 1}
     - _HorizonLineColor: {r: 0.972549, g: 0.70980394, b: 0.8156863, a: 1}
     - _MoonColor: {r: 0.59607846, g: 0.7137255, b: 0.7607843, a: 1}
-    - _MoonDir: {r: 0.32898998, g: 0.81915206, b: -0.46984628, a: 0}
+    - _MoonDir: {r: 0.5540323, g: 0.25881904, b: -0.7912401, a: 0}
     - _NebulaColor: {r: 0.55, g: 0.3, b: 0.85, a: 1}
     - _Tint: {r: 1, g: 1, b: 1, a: 1}
     - _ZenithColor: {r: 0.012, g: 0.017, b: 0.05199983, a: 1}

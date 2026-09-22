@@ -3,7 +3,10 @@
 import { discoverPort, call } from './bridge-lib.mjs';
 import fs from 'node:fs';
 
-const hit = await discoverPort(process.env.UNITY_PROJECT || 'VRlibrary');
+// 域重载会在旧端口留一个"TCP 能连、ping 不答"的僵尸监听,扫描因此常报找不到桥;
+// 设 UNITY_BRIDGE_PORT 可跳过扫描直连(与 unity-bridge.mjs 同一套逃生口)。
+const envPort = Number(process.env.UNITY_BRIDGE_PORT || 0);
+const hit = envPort ? { port: envPort } : await discoverPort(process.env.UNITY_PROJECT || 'VRlibrary');
 if (!hit) { console.error('没找到本工程编辑器桥(编辑器被最小化?);先 node Tools/bridge-scan.mjs 排查'); process.exit(5); }
 
 const name = process.argv[2] || new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -14,5 +17,5 @@ if (!r || !r.success || !r.data || !r.data.imageBase64) {
 }
 fs.mkdirSync('Captures', { recursive: true });
 fs.writeFileSync(out, Buffer.from(r.data.imageBase64, 'base64'));
-console.log(`${out}  (${r.data.width}x${r.data.height}, 端口 ${hit.port}, 场景 ${hit.activeScene})`);
+console.log(`${out}  (${r.data.width}x${r.data.height}, 端口 ${hit.port})`);
 process.exit(0);

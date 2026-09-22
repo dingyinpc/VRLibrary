@@ -47,10 +47,16 @@ public class SprintController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 星空露台观影模式下由 <c>TerraceCinema</c> 置 true:左手 Grip 在那儿要负责呼出播控面板,
+    /// 不能再当加速;退出观影态时复位。抑制期间速度写回基础值、跑步震荡归零。
+    /// </summary>
+    public static bool suppressed;
+
     void Update()
     {
         if (moveProviderBehaviour == null || speedProp == null) return;
-        bool sprint = ReadSprintInput();
+        bool sprint = !suppressed && ReadSprintInput();
         if (sprint != sprinting)
         {
             sprinting = sprint;
