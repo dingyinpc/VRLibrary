@@ -40,6 +40,9 @@ public class VRLibrarySmoke : MonoBehaviour
 
         var go = new GameObject("__VRLibrarySmoke__");
         DontDestroyOnLoad(go);
+        // 编辑器一失焦/最小化就挂起或节流 Play 循环,而 runMenuItem 自己就会把窗口最小化:
+        // 症状是"冒烟跑到第 5 项冻住"或整轮掉到 17 fps 让按时间量的项假失败。
+        Application.runInBackground = true;
         var runner = go.AddComponent<VRLibrarySmoke>();
         if (req.StartsWith("preview")) runner.StartCoroutine(runner.Preview(req));
         else runner.StartCoroutine(runner.Run());
@@ -668,11 +671,26 @@ public class VRLibrarySmoke : MonoBehaviour
         var hud = LibraryHud.Instance;
         if (hud == null) { Fail("HUD", "场上没有 LibraryHud 实例 → 跑 VRLibrary/装小地图与菜单"); yield break; }
 
-        var cam = hud.GetComponentInParent<Camera>();
-        Check("HUD 结构", cam != null && hud.hudGroup != null && hud.menuGroup != null
-              && hud.origin != null && hud.teleporters != null && hud.teleporters.Length == 3,
-              "挂在「" + (cam == null ? "无相机父级" : cam.name) + "」下,hudGroup=" + (hud.hudGroup != null)
-              + " menuGroup=" + (hud.menuGroup != null) + ",origin=" + (hud.origin != null) + ",传送器 3 份");
+        var cv = hud.GetComponent<Canvas>();
+        var scaler = hud.GetComponent<CanvasScaler>();
+        float pw = hud.menuPanel != null ? hud.menuPanel.rect.width : 0f;
+        // 把三个候选宽度全打出来:哪个是假的,一次跑就能看出来(别再靠推理)
+        var crt = cv == null ? null : cv.GetComponent<RectTransform>();
+        float canvasPx = crt == null ? 0f : crt.rect.width;
+        float sf = cv == null ? 0f : cv.scaleFactor;
+        float refW = scaler != null ? scaler.referenceResolution.x : 0f;
+        float third = refW / 3f;
+        Check("HUD 结构", cv != null && cv.renderMode == RenderMode.ScreenSpaceOverlay && scaler != null
+              && hud.hudGroup != null && hud.menuGroup != null
+              && hud.origin != null && hud.teleporters != null && hud.teleporters.Length == 3
+              && Mathf.Abs(pw - third) < third * 0.05f,
+              "Overlay=" + (cv != null && cv.renderMode == RenderMode.ScreenSpaceOverlay)
+              + " scaler=" + (scaler != null) + " hudGroup=" + (hud.hudGroup != null)
+              + " menuGroup=" + (hud.menuGroup != null) + " 传送器 3 份"
+              + ";侧边栏实宽 " + pw.ToString("0") + " = 屏宽 "
+              + (refW > 0f ? (pw / refW * 100f).ToString("0") : "-") + "%(要 33%±2)"
+              + "  [画布rect=" + canvasPx.ToString("0") + " scaleFactor=" + sf.ToString("0.000")
+              + " 参考宽=" + refW.ToString("0") + " Screen.width=" + Screen.width + "]");
 
         // ── 开合:菜单键开 → 点空白收 → 菜单键开 → 再点菜单键收
         var btnToggle = Child<Button>(hud.transform, "MenuToggle");

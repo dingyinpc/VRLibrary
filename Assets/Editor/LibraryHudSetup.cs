@@ -21,14 +21,20 @@ using Unity.XR.CoreUtils;
 /// </summary>
 public static class LibraryHudSetup
 {
-    const string kCameraPath = "SmartLibrary/XR Interaction Setup/XR Origin (XR Rig)/Camera Offset/Main Camera";
+    const string kRootPath = "SmartLibrary";
     const string kHudName = "LibraryHud";
 
-    // 画布宽决定"贴角"贴到哪:1240 px × 0.0011 = 1.364 m,在 1.85 m 处张到视轴 ±20.3°。
-    // 上一版 940 px 只有 ±15.7°,实拍(Captures/hud-open-1f.png)里左上/右上两块挤在视野正中一条上,不像贴角。
-    const int CanvasW = 1240, CanvasH = 560;
-    const float CanvasScale = 0.0011f, ViewDist = 1.85f;
-    const int PanelW = 340, PanelH = 430;
+    // uGUI 屏幕空间 Overlay:画布就是整块眼缓冲,所以"左上角/右上角"是真的贴到屏幕角上。
+    // (上一版是挂在相机前 1.85 m 的世界空间画布,实拍里两块挤在视野正中一条上 —— 用户直接指出"放中间算什么"。)
+    // 按宽匹配 ⇒ 参考宽恒为 RefW,侧边栏 = RefW/3 就是"屏幕宽的 1/3",与分辨率无关。
+    // 字号换算:30 px = 参考宽的 1.9%;PICO 水平 FOV 约 105° ⇒ 字高约 1.9°,在 VR 可读下限之上。
+    const float RefW = 1600f;
+    const float PanelFrac = 1f / 3f;
+    const float PanelRefW = RefW * PanelFrac;      // = 533.3 参考像素
+
+    // 中心锚点(anchorMin==anchorMax)的 sizeDelta 就是**实际尺寸**,不是"离父级差多少";
+    // 只有拉伸锚点(0→1)才是差值。上一版把 -60 直接写进中心锚点的按钮,宽就成了 -60 ⇒ 整排按钮不可见。
+    const float ItemW = PanelRefW - 60f;
 
     static readonly Color BgPanel = new Color(0.02f, 0.045f, 0.075f, 0.93f);
     static readonly Color BtnBg = new Color(0.07f, 0.20f, 0.30f, 1f);
@@ -56,29 +62,28 @@ public static class LibraryHudSetup
         sb.AppendLine("小地图与菜单 HUD 搭建  " + System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         Snapshot();
 
-        var camGo = GameObject.Find(kCameraPath);
-        if (camGo == null)
+        var sceneRoot = GameObject.Find(kRootPath);
+        if (sceneRoot == null)
         {
-            sb.AppendLine("  !! 找不到相机 " + kCameraPath + " → 没建任何东西");
+            sb.AppendLine("  !! 找不到场景根 " + kRootPath + " → 没建任何东西");
             bad++;
             Flush("Logs/hud-setup.txt");
             return;
         }
-        var cam = camGo.transform;
 
-        int wiped = Wipe(cam);
+        int wiped = Wipe(sceneRoot.transform);
         var origin = FindOrigin();
         if (origin == null) sb.AppendLine("  !! 场上没有可用的 XROrigin → 传送按钮要手动接 origin");
 
-        var root = New(kHudName, cam);
+        var root = New(kHudName, sceneRoot.transform);
         var hud = root.AddComponent<LibraryHud>();
         var cv = root.AddComponent<Canvas>();
-        cv.renderMode = RenderMode.WorldSpace;
-        var crt = root.GetComponent<RectTransform>();
-        crt.sizeDelta = new Vector2(CanvasW, CanvasH);
-        crt.localScale = Vector3.one * CanvasScale;
-        crt.localPosition = new Vector3(0f, 0f, ViewDist);
-        crt.localRotation = Quaternion.identity;      // uGUI 可见面是自身 -Z;父级就是相机 ⇒ identity 正对眼睛
+        cv.renderMode = RenderMode.ScreenSpaceOverlay;
+        cv.sortingOrder = 100;                        // Overlay 不吃 overrideSorting,靠 sortingOrder 压在其它 UI 上
+        var scaler = root.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(RefW, RefW);
+        scaler.matchWidthOrHeight = 0f;               // 按宽匹配:侧边栏的 1/3 才在任何分辨率上都是 1/3
         root.AddComponent<GraphicRaycaster>();
         root.AddComponent<TrackedDeviceGraphicRaycaster>();
         var hudGroup = root.AddComponent<CanvasGroup>();
@@ -124,8 +129,6 @@ public static class LibraryHudSetup
         hud.hudGroup = hudGroup;
         hud.menuGroup = menuGroup;
         hud.menuPanel = panel.GetComponent<RectTransform>();
-        hud.menuOpenPos = new Vector2(16f, -132f);
-        hud.menuClosedPos = new Vector2(-PanelW - 20f, -132f);
         hud.backdrop = backdrop;
         hud.pageHome = pageHome;
         hud.pageSettings = pageSettings;
@@ -152,6 +155,10 @@ public static class LibraryHudSetup
         HoverTip(btnSettings, tipSettings, "打开设置");
         HoverTip(btnQuit, tipQuit, "退出应用");
         BgmSlot(root.transform);
+        // 菜单键与小地图排到最后 ⇒ 永远画在侧边栏之上(否则侧栏一开就把菜单键盖住,"再点一次收起"点不到)。
+        // 必须在所有兄弟都建完之后做:早先放在 BgmSlot 之前重排,后者一建就又把菜单键挤了一位。
+        toggle.transform.SetAsLastSibling();
+        root.transform.Find("Minimap").SetAsLastSibling();
 
         sb.AppendLine("  拆旧 HUD " + wiped + " 个;按钮 " + root.GetComponentsInChildren<Button>(true).Length
                       + " 颗;文字 " + root.GetComponentsInChildren<Text>(true).Length + " 块;全部编辑期建好(坑 1)");
@@ -171,7 +178,7 @@ public static class LibraryHudSetup
         sb = new StringBuilder();
         bad = 0;
         sb.AppendLine("小地图与菜单 HUD 复核(只读)  " + System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        var root = GameObject.Find(kCameraPath + "/" + kHudName);
+        var root = GameObject.Find(kRootPath + "/" + kHudName);
         if (root == null)
         {
             sb.AppendLine("  !! 场上没有 " + kHudName + " → 跑 VRLibrary/装小地图与菜单");
@@ -179,7 +186,7 @@ public static class LibraryHudSetup
             Flush("Logs/hud-verify.txt");
             return;
         }
-        sb.AppendLine("  节点:" + Tree(root.transform));
+        sb.AppendLine("  节点:" + Tree(root.transform) + "  (Overlay 画布,父级只是归档,不参与定位)");
         var mg = root.transform.Find("MenuPanel");
         Verify(root, root.GetComponent<LibraryHud>(), root.GetComponent<Canvas>(),
                root.GetComponent<CanvasGroup>(), mg == null ? null : mg.GetComponent<CanvasGroup>());
@@ -249,9 +256,68 @@ public static class LibraryHudSetup
     {
         sb.AppendLine("  ── 复核 ─────────────────────────────");
         if (hud == null) { Bad("根物体上没有 LibraryHud"); return; }
-        BadIf(cv == null || cv.renderMode != RenderMode.WorldSpace, "画布是 WorldSpace");
-        BadIf(root.transform.parent == null || root.transform.parent.GetComponent<Camera>() == null,
-              "挂在相机下:" + (root.transform.parent == null ? "无父级" : root.transform.parent.name));
+        BadIf(cv == null || cv.renderMode != RenderMode.ScreenSpaceOverlay, "画布是 ScreenSpaceOverlay");
+        var scaler = root.GetComponent<CanvasScaler>();
+        BadIf(scaler == null || scaler.uiScaleMode != CanvasScaler.ScaleMode.ScaleWithScreenSize
+              || Mathf.Abs(scaler.matchWidthOrHeight) > 0.01f,
+              "CanvasScaler 按宽匹配(侧边栏的 1/3 才与分辨率无关)");
+        // "在不在角上"要能判伪,但**不能拿 Canvas.scaleFactor 换算**:编辑态它是未刷新的缓存值
+        // (实测读出 1,于是 2855 的屏幕宽被当成参考宽,量出"侧边栏只占 19%"这种假结论)。
+        // matchWidthOrHeight=0 ⇒ 参考宽恒等于 referenceResolution.x;高度按视口比例换算一次即可。
+        float cw = scaler == null ? RefW : scaler.referenceResolution.x;
+        float ch = cw;
+        if (scaler != null)
+        {
+            var srt = cv == null ? null : cv.GetComponent<RectTransform>();
+            if (srt != null && srt.rect.width > 1f) ch = cw * srt.rect.height / srt.rect.width;
+        }
+        var rToggle = CornerOf(root.transform.Find("MenuToggle") as RectTransform, cw, ch);
+        var rMini = CornerOf(root.transform.Find("Minimap") as RectTransform, cw, ch);
+        var rPanel = AnchorSpanOf(root.transform.Find("MenuPanel") as RectTransform, cw, ch);
+        sb.AppendLine(string.Format("    画布参考尺寸 {0:0}×{1:0}  菜单键 x{2:0} y顶{3:0}  小地图 x右{4:0}  侧栏宽{5:0}(占 {6:0}%) 侧栏高{7:0}",
+            cw, ch, rToggle.xMin, ch - rToggle.yMax, rMini.xMax, rPanel.width,
+            rPanel.width / Mathf.Max(1e-3f, cw) * 100f, rPanel.height));
+        BadIf(rToggle.xMin > 60f || ch - rToggle.yMax > 60f, "菜单键贴在左上角(距两边 ≤60 参考像素)");
+        BadIf(cw - rMini.xMax > 60f || ch - rMini.yMax > 60f, "小地图贴在右上角(距两边 ≤60 参考像素)");
+        BadIf(Mathf.Abs(rPanel.width - cw / 3f) > cw * 0.02f, "侧边栏宽 = 屏幕 1/3(±2%)");
+        BadIf(Mathf.Abs(rPanel.height - ch) > ch * 0.02f, "侧边栏占满上下(±2%)");
+        // 中心锚点写错 sizeDelta 会让整排按钮宽成负数 ⇒ 场上"东西都在"却一个看不见(实拍抓到过)。
+        // 阈值必须"变得出红":上一版写"宽<60 算小",而 -60 取绝对值正好是 60,卡在边界上照样绿。
+        // 所以这里每项给"该有多宽"的下限,并把实测宽全打出来。
+        object[][] items = {
+            new object[] { "MenuPanel/PageHome/Btn_1", 0.25f },
+            new object[] { "MenuPanel/PageHome/Btn_2", 0.25f },
+            new object[] { "MenuPanel/PageHome/Btn_3", 0.25f },
+            new object[] { "MenuPanel/PageSettings/VolSlider", 0.25f },
+            new object[] { "MenuPanel/PageHome/QuitConfirm", 0.25f },
+            new object[] { "MenuPanel/PageSettings/Btn_Back", 0.25f },
+            new object[] { "Minimap/Ring", 0.10f },          // 190/1600 = 11.9%
+            new object[] { "Minimap/FloorLabel", 0.20f },    // 360/1600 = 22.5%
+        };
+        var tooSmall = new System.Text.StringBuilder();
+        var measured = new System.Text.StringBuilder();
+        foreach (var it in items)
+        {
+            string pn = (string)it[0];
+            var rt = root.transform.Find(pn) as RectTransform;
+            var r = RefRect(rt, cw, ch);
+            measured.Append(pn.Substring(pn.LastIndexOf('/') + 1) + "=" + r.width.ToString("0")
+                            + "×" + r.height.ToString("0") + "  ");
+            if (rt == null || r.width < (float)it[1] * cw || r.height < 24f)
+                tooSmall.Append(pn + " ");
+        }
+        sb.AppendLine("    实测尺寸:" + measured);
+        var rTog = CornerOf(root.transform.Find("MenuToggle") as RectTransform, cw, ch);
+        var overl = new System.Text.StringBuilder();
+        foreach (var tn in new[] { "MenuPanel/PageHome/Title", "MenuPanel/PageSettings/Title" })
+        {
+            var r = CornerOf(root.transform.Find(tn) as RectTransform, cw, ch);
+            if (r.xMin < rTog.xMax && r.xMax > rTog.xMin && r.yMin < rTog.yMax && r.yMax > rTog.yMin)
+                overl.Append(tn + " ");
+        }
+        BadIf(overl.Length > 0, "两页标题都不与菜单键重叠" + (overl.Length > 0 ? ",压住:" + overl.ToString() : ""));
+        BadIf(tooSmall.Length > 0, "8 个可见件都够大(宽≥各自下限、高≥24)"
+              + (tooSmall.Length > 0 ? ",不合格:" + tooSmall.ToString() : ""));
         BadIf(root.GetComponentsInChildren<GraphicRaycaster>(true).Length != 1
               || root.GetComponentsInChildren<TrackedDeviceGraphicRaycaster>(true).Length != 1,
             "键鼠与手柄射线各一份 raycaster");
@@ -285,6 +351,13 @@ public static class LibraryHudSetup
         BadIf(bg == null || bg.gameObject.activeSelf, "backdrop 存在且初始不挡射线");
         BadIf(Deep(root.transform, "PageSettings") == null || Deep(root.transform, "PageSettings").gameObject.activeSelf,
             "设置页初始收起");
+        // 真正要成立的是"菜单键画在侧边栏之上",与它排倒数第几无关(uGUI 同级后建的画在上面)
+        var tog = root.transform.Find("MenuToggle");
+        var pnl = root.transform.Find("MenuPanel");
+        BadIf(tog == null || pnl == null || tog.GetSiblingIndex() <= pnl.GetSiblingIndex(),
+            "菜单键排在侧边栏之后(侧栏展开时仍点得到它);实测 toggle="
+            + (tog == null ? "-" : tog.GetSiblingIndex().ToString())
+            + " panel=" + (pnl == null ? "-" : pnl.GetSiblingIndex().ToString()));
 
         int texts = 0, nullFont = 0;
         foreach (var t in root.GetComponentsInChildren<Text>(true))
@@ -336,10 +409,10 @@ public static class LibraryHudSetup
     static Button MenuToggleButton(Transform parent)
     {
         var go = Box("MenuToggle", parent, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(24f, -24f), new Vector2(92f, 92f), BtnIcon);
+            new Vector2(28f, -28f), new Vector2(104f, 104f), BtnIcon);
         for (int i = -1; i <= 1; i++)
             Box("Bar" + (i + 2), go.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, i * 22f), new Vector2(58f, 8f), Ink);
+                new Vector2(0.5f, 0.5f), new Vector2(0f, i * 26f), new Vector2(64f, 9f), Ink);
         var b = go.AddComponent<Button>();
         b.targetGraphic = go.GetComponent<Image>();
         Paint(b);
@@ -349,22 +422,24 @@ public static class LibraryHudSetup
     static void Minimap(Transform parent, out RectTransform dial, out Text floorLabel)
     {
         var box = Box("Minimap", parent, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
-            new Vector2(-24f, -24f), new Vector2(168f, 210f), None);
+            new Vector2(-28f, -28f), new Vector2(360f, 246f), None);
+        // pivot 必须是 (0.5,1) 让它从顶往下挂;写成 (0.5,0.5) 会把圆盘上半截顶到屏幕外(实拍已见过)
         var ring = BoxSprite("Ring", box.transform, "Assets/Textures/HudDialRing.png",
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, 0f), new Vector2(168f, 168f), InkDim);
+            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0f, 0f), new Vector2(190f, 190f), InkDim);
         var rt = Box("Dial", ring.transform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
             Vector2.zero, Vector2.zero, None);
         dial = rt.GetComponent<RectTransform>();
         // 针从盘心朝上;盘的 localRotation 由 LibraryHud 按相机 yaw 反向转 ⇒ 针尖永远指真实北方(本工程北 = -Z)
         Box("Needle", rt.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0f),
-            new Vector2(0f, 0f), new Vector2(7f, 46f), new Color(0.98f, 0.72f, 0.36f, 1f));
-        Label("North", rt.transform, "北", 26, Ink, TextAnchor.MiddleCenter,
+            new Vector2(0f, 0f), new Vector2(8f, 52f), new Color(0.98f, 0.72f, 0.36f, 1f));
+        Label("North", rt.transform, "北", 30, Ink, TextAnchor.MiddleCenter,
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, 64f), new Vector2(56f, 34f));
-        floorLabel = Label("FloorLabel", box.transform, "图书馆 1 楼", 30, Ink, TextAnchor.UpperCenter,
+            new Vector2(0f, 72f), new Vector2(60f, 38f));
+        // 用户要"小地图下面标着本地位置":这行由 LibraryHud 每帧写成"当前位置 · 图书馆 2 楼"
+        floorLabel = Label("FloorLabel", box.transform, "当前位置 · 图书馆 1 楼", 32, Ink, TextAnchor.UpperCenter,
             new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 1f),
-            new Vector2(0f, -172f), new Vector2(220f, 36f));
+            new Vector2(0f, -196f), new Vector2(360f, 40f));
     }
 
     static GameObject MenuPanel(Transform parent, out CanvasGroup menuGroup, out GameObject pageHome,
@@ -372,8 +447,9 @@ public static class LibraryHudSetup
         out Button[] tpButtons, out Button btnSettings, out Button btnQuit,
         out GameObject tipSettings, out GameObject tipQuit)
     {
-        var panel = Box("MenuPanel", parent, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(16f, -132f), new Vector2(PanelW, PanelH), BgPanel);
+        // 占满左边上下、宽 = 屏幕 1/3:靠锚点算,不写死像素 ⇒ 换分辨率比例不变
+        var panel = Box("MenuPanel", parent, new Vector2(0f, 0f), new Vector2(PanelFrac, 1f),
+            new Vector2(0f, 0.5f), Vector2.zero, Vector2.zero, BgPanel);
         menuGroup = panel.AddComponent<CanvasGroup>();
         menuGroup.alpha = 0f;               // 靠 alpha + blocksRaycasts 收,不靠 SetActive(收了运行时没法再淡入)
         menuGroup.interactable = false;
@@ -382,33 +458,33 @@ public static class LibraryHudSetup
         var home = Box("PageHome", panel.transform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
             Vector2.zero, Vector2.zero, None);
         pageHome = home;
-        Label("Title", home.transform, "传送到", 32, Ink, TextAnchor.MiddleLeft,
+        Label("Title", home.transform, "传送到", 38, Ink, TextAnchor.MiddleLeft,
             new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
-            new Vector2(20f, -14f), new Vector2(-40f, 40f));
+            new Vector2(30f, -148f), new Vector2(-60f, 52f));
 
         string[] labels = { "图书馆 1 楼", "图书馆 2 楼", "星空影台" };
         tpButtons = new Button[3];
         for (int i = 0; i < 3; i++)
-            tpButtons[i] = PushButton("Btn_" + (i + 1), home.transform, labels[i], -58f - i * 90f);
+            tpButtons[i] = PushButton("Btn_" + (i + 1), home.transform, labels[i], (1 - i) * 118f);
 
         btnSettings = IconButton("Btn_Settings", home.transform, "Assets/Textures/HudIconSettings.png",
-            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(26f, 20f));
+            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(30f, 28f));
         btnQuit = IconButton("Btn_Quit", home.transform, "Assets/Textures/HudIconQuit.png",
-            new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-26f, 20f));
+            new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-30f, 28f));
 
-        quitConfirm = Label("QuitConfirm", home.transform, "再按一次确认退出应用", 26,
+        quitConfirm = Label("QuitConfirm", home.transform, "再按一次确认退出应用", 30,
             new Color(1f, 0.80f, 0.45f, 1f), TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Vector2(0f, -330f), new Vector2(320f, 30f)).gameObject;
+            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f),
+            new Vector2(0f, 152f), new Vector2(ItemW, 36f)).gameObject;
         quitConfirm.SetActive(false);
 
         // 提示写在图标旁边而不是上方:上方那一条要给"再按一次确认退出"留位置
-        tipSettings = Label("TipSettings", home.transform, "打开设置", 24, Ink, TextAnchor.MiddleLeft,
+        tipSettings = Label("TipSettings", home.transform, "打开设置", 28, Ink, TextAnchor.MiddleLeft,
             new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f),
-            new Vector2(112f, 42f), new Vector2(190f, 30f)).gameObject;
-        tipQuit = Label("TipQuit", home.transform, "退出应用", 24, Ink, TextAnchor.MiddleRight,
+            new Vector2(134f, 56f), new Vector2(220f, 34f)).gameObject;
+        tipQuit = Label("TipQuit", home.transform, "退出应用", 28, Ink, TextAnchor.MiddleRight,
             new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
-            new Vector2(-112f, 42f), new Vector2(190f, 30f)).gameObject;
+            new Vector2(-134f, 56f), new Vector2(220f, 34f)).gameObject;
         tipSettings.SetActive(false);
         tipQuit.SetActive(false);
 
@@ -416,24 +492,24 @@ public static class LibraryHudSetup
             Vector2.zero, Vector2.zero, None);
         pageSettings = set;
         pageSettings.SetActive(false);
-        Label("Title", set.transform, "设置", 32, Ink, TextAnchor.MiddleLeft,
+        Label("Title", set.transform, "设置", 38, Ink, TextAnchor.MiddleLeft,
             new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
-            new Vector2(20f, -14f), new Vector2(-40f, 40f));
-        Label("Hint", set.transform, "总音量(同时影响 BGM 与影片声)", 22, InkDim, TextAnchor.MiddleLeft,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
-            new Vector2(20f, -58f), new Vector2(-40f, 30f));
-        volLabel = Label("VolLabel", set.transform, "总音量 50%", 28, Ink, TextAnchor.MiddleLeft,
-            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
-            new Vector2(20f, -96f), new Vector2(-40f, 36f));
-        volSlider = SliderAt("VolSlider", set.transform, -150f);
-        PushButton("Btn_Back", set.transform, "返回菜单", -210f);
+            new Vector2(30f, -148f), new Vector2(-60f, 52f));
+        Label("Hint", set.transform, "总音量(同时影响 BGM 与影片声)", 26, InkDim, TextAnchor.MiddleLeft,
+            new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, 1f),
+            new Vector2(30f, 128f), new Vector2(-60f, 34f));
+        volLabel = Label("VolLabel", set.transform, "总音量 50%", 32, Ink, TextAnchor.MiddleLeft,
+            new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, 1f),
+            new Vector2(30f, 82f), new Vector2(-60f, 40f));
+        volSlider = SliderAt("VolSlider", set.transform, 0f);
+        PushButton("Btn_Back", set.transform, "返回菜单", -118f);
         return panel;
     }
 
     static Slider SliderAt(string name, Transform parent, float topOffset)
     {
-        var bg = Box(name, parent, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, topOffset), new Vector2(300f, 30f), new Color(0.12f, 0.18f, 0.26f, 1f));
+        var bg = Box(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(0f, topOffset), new Vector2(ItemW, 38f), new Color(0.12f, 0.18f, 0.26f, 1f));
         var s = bg.AddComponent<Slider>();
         var fillArea = Box("Fill Area", bg.transform, new Vector2(0f, 0f), new Vector2(1f, 1f),
             new Vector2(0.5f, 0.5f), new Vector2(8f, 0f), new Vector2(-16f, 0f), None);
@@ -451,12 +527,12 @@ public static class LibraryHudSetup
 
     static Button PushButton(string name, Transform parent, string label, float topOffset)
     {
-        var go = Box(name, parent, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Vector2(0f, topOffset), new Vector2(300f, 78f), BtnBg);
+        var go = Box(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(0f, topOffset), new Vector2(ItemW, 96f), BtnBg);
         var b = go.AddComponent<Button>();
         b.targetGraphic = go.GetComponent<Image>();
         Paint(b);
-        Label("Text", go.transform, label, 30, Ink, TextAnchor.MiddleCenter,
+        Label("Text", go.transform, label, 34, Ink, TextAnchor.MiddleCenter,
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         return b;
     }
@@ -464,7 +540,7 @@ public static class LibraryHudSetup
     static Button IconButton(string name, Transform parent, string spritePath,
         Vector2 aMin, Vector2 aMax, Vector2 pivot, Vector2 pos)
     {
-        var go = Box(name, parent, aMin, aMax, pivot, pos, new Vector2(72f, 72f), BtnIcon);
+        var go = Box(name, parent, aMin, aMax, pivot, pos, new Vector2(88f, 88f), BtnIcon);
         BoxSprite("Icon", go.transform, spritePath, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
             Vector2.zero, Vector2.zero, Ink);
         var b = go.AddComponent<Button>();
@@ -660,11 +736,19 @@ public static class LibraryHudSetup
         return t == null ? null : t.GetComponent<T>();
     }
 
-    static int Wipe(Transform cam)
+    /// <summary>
+    /// 按名先拆后建。v7.26 从"挂在 Main Camera 前的世界空间画布"迁到 Overlay(挂场景根下),
+    /// 旧那份还留在相机下 ⇒ 两个位置都要清,否则场上会有两份 LibraryHud(两份抢排序、两份都响应同一批按钮)。
+    /// </summary>
+    static int Wipe(Transform sceneRoot)
     {
         int n = 0;
-        for (int i = cam.childCount - 1; i >= 0; i--)
-            if (cam.GetChild(i).name == kHudName) { Object.DestroyImmediate(cam.GetChild(i).gameObject, true); n++; }
+        var places = new System.Collections.Generic.List<Transform> { sceneRoot };
+        var camGo = GameObject.Find("SmartLibrary/XR Interaction Setup/XR Origin (XR Rig)/Camera Offset/Main Camera");
+        if (camGo != null) places.Add(camGo.transform);
+        foreach (var t in places)
+            for (int i = t.childCount - 1; i >= 0; i--)
+                if (t.GetChild(i).name == kHudName) { Object.DestroyImmediate(t.GetChild(i).gameObject, true); n++; }
         return n;
     }
 
@@ -750,6 +834,46 @@ public static class LibraryHudSetup
         string s = t.name;
         while (t.parent != null) { t = t.parent; s = t.name + "/" + s; }
         return s;
+    }
+
+    /// <summary>
+    /// 贴在角上的件:直接由"锚点 + anchoredPosition + 尺寸"推出它在参考单位下的矩形。
+    /// 这条路完全不碰 Canvas.scaleFactor,所以编辑态与 Play 里读出来是同一个数。
+    /// </summary>
+    static Rect CornerOf(RectTransform rt, float cw, float ch)
+    {
+        if (rt == null) return new Rect(-1e6f, -1e6f, 0f, 0f);
+        // 点锚与拉伸锚都要加上 anchoredPosition:上一版点锚分支漏加,
+        // 于是"菜单键贴在左上角"对它形同虚设(不管挪到哪都算 x=0 通过)。
+        float ax = rt.anchorMin.x * cw + rt.anchoredPosition.x;
+        float ay = rt.anchorMin.y * ch + rt.anchoredPosition.y;
+        float px = rt.pivot.x * rt.rect.width, py = rt.pivot.y * rt.rect.height;
+        float x0 = ax - px, y0 = ay - py;
+        return Rect.MinMaxRect(x0, y0, x0 + rt.rect.width, y0 + rt.rect.height);
+    }
+
+    /// <summary>拉伸锚点的件(侧边栏):宽 = (anchorMax.x-anchorMin.x)×参考宽,高 = 满幅。</summary>
+    static Rect AnchorSpanOf(RectTransform rt, float cw, float ch)
+    {
+        if (rt == null) return new Rect(-1e6f, -1e6f, 0f, 0f);
+        float w = (rt.anchorMax.x - rt.anchorMin.x) * cw + rt.sizeDelta.x;
+        float h = (rt.anchorMax.y - rt.anchorMin.y) * ch + rt.sizeDelta.y;
+        return Rect.MinMaxRect(0f, 0f, w, h);
+    }
+
+    /// <summary>Overlay 画布上 RectTransform 的世界角点就是屏幕像素,除以 scaleFactor 回到参考单位。</summary>
+    static Rect RefRect(RectTransform rt, float cw, float ch)
+    {
+        if (rt == null) return new Rect(-1e6f, -1e6f, 0f, 0f);
+        var c = new Vector3[4];
+        rt.GetWorldCorners(c);
+        float f = 1f;
+        var cvs = rt.GetComponentInParent<Canvas>();
+        if (cvs != null && cvs.scaleFactor > 1e-4f) f = 1f / cvs.scaleFactor;
+        float x0 = c[0].x * f, y0 = c[0].y * f, x1 = c[2].x * f, y1 = c[2].y * f;
+        if (x1 < x0) { var t = x0; x0 = x1; x1 = t; }
+        if (y1 < y0) { var t2 = y0; y0 = y1; y1 = t2; }
+        return Rect.MinMaxRect(x0, y0, x1, y1);
     }
 
     static void Bad(string what) { bad++; sb.AppendLine("  !! " + what); }

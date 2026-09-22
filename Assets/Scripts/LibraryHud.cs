@@ -6,7 +6,8 @@ using Unity.XR.CoreUtils;
 /// 智能图书馆 · 跟随头显的 HUD:右上角小地图(楼层 + 指北罗盘)、左上角菜单(侧边栏三处传送)、
 /// 侧边栏最下方的设置(音量)与关机(退出应用)。
 /// 所有 UI 由菜单 VRLibrary/装小地图与菜单 在编辑期建好,运行时只切显隐与数值(坑 1)。
-/// 挂法:整块是 Main Camera 的子物体 ⇒ 不需要每帧写位姿,画布角稳定停在视轴 ±20°/±7.7°。
+/// 挂法:uGUI 屏幕空间 Overlay ⇒ 画布就是整块眼缓冲,左上菜单键与右上小地图真的贴在屏幕角上。
+/// 侧边栏按锚点占"屏幕宽的 1/3 × 上下满",收合距离运行时取面板自己的宽度(不在搭建期写死像素)。
 /// </summary>
 public class LibraryHud : MonoBehaviour
 {
@@ -17,8 +18,6 @@ public class LibraryHud : MonoBehaviour
     public CanvasGroup hudGroup;
     public CanvasGroup menuGroup;
     public RectTransform menuPanel;
-    public Vector2 menuClosedPos;
-    public Vector2 menuOpenPos;
     public GameObject backdrop;
     public GameObject pageHome;
     public GameObject pageSettings;
@@ -39,6 +38,7 @@ public class LibraryHud : MonoBehaviour
 
     float openT;
     bool open;
+    float slideDist, lastW;
     float quitArmedAt = -99f;
     TerraceCinema cinema;
     Camera cam;
@@ -52,7 +52,8 @@ public class LibraryHud : MonoBehaviour
     {
         Instance = this;
         cinema = FindObjectOfType<TerraceCinema>();
-        cam = GetComponentInParent<Camera>();
+        // Overlay 画布不在相机层级下,不能再用 GetComponentInParent<Camera>
+        cam = origin != null ? origin.Camera : null;
         if (cam == null) cam = Camera.main;
     }
 
@@ -110,7 +111,18 @@ public class LibraryHud : MonoBehaviour
             menuGroup.blocksRaycasts = openT > 0.5f;
         }
         if (menuPanel != null)
-            menuPanel.anchoredPosition = Vector2.LerpUnclamped(menuClosedPos, menuOpenPos, EaseOut(openT));
+        {
+            // 收合距离 = 面板自己的宽度:Overlay 下它是"屏幕宽的 1/3"锚出来的,
+            // 搭建期写死像素会在别的分辨率上露出一条边或留一段空档。
+            if (slideDist <= 0f || Mathf.Abs(slideDist - lastW) > 0.01f)
+            {
+                lastW = menuPanel.rect.width;
+                slideDist = lastW;
+            }
+            var pos = menuPanel.anchoredPosition;
+            pos.x = Mathf.Lerp(-slideDist, 0f, EaseOut(openT));
+            menuPanel.anchoredPosition = pos;
+        }
 
         if (quitConfirm != null && quitConfirm.activeSelf && Time.unscaledTime - quitArmedAt > QuitArmSeconds)
             quitConfirm.SetActive(false);
@@ -119,7 +131,7 @@ public class LibraryHud : MonoBehaviour
     void LateUpdate()
     {
         Vector3 p = origin != null ? origin.transform.position : Vector3.zero;
-        if (floorLabel != null) floorLabel.text = FloorNameAt(p);
+        if (floorLabel != null) floorLabel.text = "当前位置 · " + FloorNameAt(p);
         if (cam != null && dial != null)
         {
             Vector3 f = cam.transform.forward; f.y = 0f;
