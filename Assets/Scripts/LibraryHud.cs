@@ -1,13 +1,18 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
+using UnityEngine.XR;
 using Unity.XR.CoreUtils;
 
 /// <summary>
-/// 智能图书馆 · 跟随头显的 HUD:右上角小地图(楼层 + 指北罗盘)、左上角菜单(侧边栏三处传送)、
-/// 侧边栏最下方的设置(音量)与关机(退出应用)。
+/// 智能图书馆 · HUD:菜单(侧边栏三处传送 + 设置/关机)与**右前下方**的楼层指北小地图。
 /// 所有 UI 由菜单 VRLibrary/装小地图与菜单 在编辑期建好,运行时只切显隐与数值(坑 1)。
-/// 挂法:uGUI 屏幕空间 Overlay ⇒ 画布就是整块眼缓冲,左上菜单键与右上小地图真的贴在屏幕角上。
-/// 侧边栏按锚点占"屏幕宽的 1/3 × 上下满",收合距离运行时取面板自己的宽度(不在搭建期写死像素)。
+/// 挂法:v7.28 起是**头锁世界空间画布**(挂在 Main Camera 下、眼前 1.20 m、横 ±25° / 竖 ±14.7°)。
+/// 上一版是 uGUI Overlay:在编辑器里看着"贴角",到 PICO 真机上因为眼缓冲近正方形,顶边被推到约 +45° ⇒ 实测"太上"。
+/// **呼出键(2026-09-27 真机反馈后加)**:真机 = 右手 **A 键**开合菜单、**B 键**收放小地图;
+/// 编辑器 = **M / N**。原因:Overlay 画布在头显里的落点由"眼缓冲宽高比"决定(PICO 每眼近正方形),
+/// 角上的按钮既够不准也不该逼玩家抬手去点 —— 与 SprintController(左 Grip/左 Shift)、
+/// TerraceCinema(右 Ctrl)同一套"legacy XR + 键盘兜底"读法。角上的菜单键仍然保留可用。
 /// </summary>
 public class LibraryHud : MonoBehaviour
 {
@@ -23,6 +28,7 @@ public class LibraryHud : MonoBehaviour
     public GameObject pageSettings;
     public Text floorLabel;
     public RectTransform dial;
+    public GameObject minimap;                  // 小地图根(可一键收起)
     public GameObject quitConfirm;
     public Slider volumeSlider;
     public Text volumeLabel;
@@ -43,8 +49,11 @@ public class LibraryHud : MonoBehaviour
     TerraceCinema cinema;
     Camera cam;
     AudioSource bgmSource;
+    bool menuKeyWasDown, mapKeyWasDown;
+    bool mapVisible = true;
 
     public bool IsMenuOpen { get { return open; } }
+    public bool IsMinimapVisible { get { return mapVisible; } }
     public string FloorText { get { return floorLabel == null ? "" : floorLabel.text; } }
     public bool BgmPlaying { get { return bgmSource != null && bgmSource.isPlaying; } }
 
@@ -94,6 +103,14 @@ public class LibraryHud : MonoBehaviour
     {
         float dt = Time.unscaledDeltaTime;
 
+        // 呼出键先读:菜单开合 / 小地图收放(按下那一帧翻转,不要求按住 —— 见文档坑 32)
+        bool menuKey = ReadButton(XRNode.RightHand, UnityEngine.XR.CommonUsages.primaryButton, Key.M);
+        if (menuKey && !menuKeyWasDown) ToggleMenu();
+        menuKeyWasDown = menuKey;
+        bool mapKey = ReadButton(XRNode.RightHand, UnityEngine.XR.CommonUsages.secondaryButton, Key.N);
+        if (mapKey && !mapKeyWasDown) SetMinimapVisible(!mapVisible);
+        mapKeyWasDown = mapKey;
+
         // 观影态下这块会糊在片子上,所以整块淡掉
         bool seated = cinema != null && cinema.IsSeated;
         float targetA = seated ? 0f : 1f;
@@ -132,11 +149,18 @@ public class LibraryHud : MonoBehaviour
     {
         Vector3 p = origin != null ? origin.transform.position : Vector3.zero;
         if (floorLabel != null) floorLabel.text = "当前位置 · " + FloorNameAt(p);
+        // 指北罗盘：dial 的指针永远指向真实北方（-Z），所以当相机转向时 dail 要反向转动来抵消。
+        // 这跟"指针"无关：指针是你瞄准的点，指北针是真实北方的基准，两者不应该混用。
         if (cam != null && dial != null)
         {
-            Vector3 f = cam.transform.forward; f.y = 0f;
+            Vector3 f = cam.transform.forward;
+            f.y = 0f; // 忽略上下俯仰，只算水平面内的转角
             if (f.sqrMagnitude > 1e-4f)
-                dial.localRotation = Quaternion.Euler(0f, 0f, -Vector3.SignedAngle(Vector3.back, f, Vector3.up));
+            {
+                float angle = Vector3.SignedAngle(Vector3.back, f, Vector3.up);
+                dial.localRotation = Quaternion.Euler(0f, 0f, -angle);
+                // Debug.Log("[LibraryHud] Compass: angle=" + angle.ToString("F1") + ", dial rotation=" + dial.localRotation.eulerAngles.z.ToString("F1"));
+            }
         }
     }
 
@@ -152,6 +176,26 @@ public class LibraryHud : MonoBehaviour
 
     // ── 菜单开合 ────────────────────────────────────────────────────
     public void ToggleMenu() { if (open) CloseMenu(); else OpenMenu(); }
+
+    /// <summary>小地图收放(呼出键或程序都可调;收起只是 SetActive(false),不动任何数据)。</summary>
+    public void SetMinimapVisible(bool on)
+    {
+        mapVisible = on;
+        if (minimap != null && minimap.activeSelf != on) minimap.SetActive(on);
+    }
+
+    /// <summary>
+    /// 呼出键读法:真机走 legacy XR(PICO/OpenXR 都支持),编辑器走键盘 —— 与 SprintController、
+    /// TerraceCinema 同一套;两者取"或",所以 XR Device Simulator 里按 M/N 就能测。
+    /// </summary>
+    static bool ReadButton(XRNode hand, InputFeatureUsage<bool> usage, Key key)
+    {
+        var kb = Keyboard.current;
+        if (kb != null && kb[key].isPressed) return true;
+        var dev = InputDevices.GetDeviceAtXRNode(hand);
+        bool down;
+        return dev != null && dev.TryGetFeatureValue(usage, out down) && down;
+    }
 
     public void OpenMenu()
     {

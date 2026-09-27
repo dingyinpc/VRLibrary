@@ -6,6 +6,8 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using Unity.XR.CoreUtils;
 
 /// <summary>
@@ -680,17 +682,28 @@ public class VRLibrarySmoke : MonoBehaviour
         float sf = cv == null ? 0f : cv.scaleFactor;
         float refW = scaler != null ? scaler.referenceResolution.x : 0f;
         float third = refW / 3f;
-        Check("HUD 结构", cv != null && cv.renderMode == RenderMode.ScreenSpaceOverlay && scaler != null
+        // v7.28:画布已改成头锁世界空间 —— 判据也跟着改成"世界空间 + 挂在相机下 + 张角在舒适区"(角度才算数,坑 38)
+        var hudRt = hud.GetComponent<RectTransform>();
+        float hudDist = hudRt != null ? Mathf.Abs(hudRt.localPosition.z) : 0f;
+        var camT = hud.origin != null && hud.origin.Camera != null ? hud.origin.Camera.transform : null;
+        bool headLocked = camT != null && hud.transform.parent == camT;
+        float halfW = (hudRt != null && hudDist > 0.01f)
+            ? Mathf.Atan(hudRt.rect.width * hudRt.localScale.x * 0.5f / hudDist) * Mathf.Rad2Deg : 999f;
+        float halfH = (hudRt != null && hudDist > 0.01f)
+            ? Mathf.Atan(hudRt.rect.height * hudRt.localScale.y * 0.5f / hudDist) * Mathf.Rad2Deg : 999f;
+        Check("HUD 结构", cv != null && cv.renderMode == RenderMode.WorldSpace && headLocked
+              && halfW > 18f && halfW < 32f && halfH > 8f && halfH < 20f
               && hud.hudGroup != null && hud.menuGroup != null
               && hud.origin != null && hud.teleporters != null && hud.teleporters.Length == 3
               && Mathf.Abs(pw - third) < third * 0.05f,
-              "Overlay=" + (cv != null && cv.renderMode == RenderMode.ScreenSpaceOverlay)
-              + " scaler=" + (scaler != null) + " hudGroup=" + (hud.hudGroup != null)
+              "世界空间=" + (cv != null && cv.renderMode == RenderMode.WorldSpace) + " 头锁=" + headLocked
+              + " 张角=" + halfW.ToString("0.0") + "°×" + halfH.ToString("0.0") + "°"
+              + " hudGroup=" + (hud.hudGroup != null)
               + " menuGroup=" + (hud.menuGroup != null) + " 传送器 3 份"
-              + ";侧边栏实宽 " + pw.ToString("0") + " = 屏宽 "
+              + ";侧边栏实宽 " + pw.ToString("0") + " = 画布宽 "
               + (refW > 0f ? (pw / refW * 100f).ToString("0") : "-") + "%(要 33%±2)"
-              + "  [画布rect=" + canvasPx.ToString("0") + " scaleFactor=" + sf.ToString("0.000")
-              + " 参考宽=" + refW.ToString("0") + " Screen.width=" + Screen.width + "]");
+              + "  [画布rect=" + canvasPx.ToString("0") + " 距眼=" + hudDist.ToString("0.00") + "m"
+              + " scaleFactor=" + sf.ToString("0.000") + " 参考宽=" + refW.ToString("0") + "]");
 
         // ── 开合:菜单键开 → 点空白收 → 菜单键开 → 再点菜单键收
         var btnToggle = Child<Button>(hud.transform, "MenuToggle");
@@ -820,11 +833,66 @@ public class VRLibrarySmoke : MonoBehaviour
         Check("HUD 悬停提示与退出确认", tipOk == 2 && tipN == 2 && armed,
               "射线指上就显字的提示 " + tipOk + "/" + tipN + " 条;按第一下关机只出确认行=" + armed
               + "(没按第二下,应用仍在跑)");
+
+        // ── 呼出键:真机 = 右手 A/B 键,编辑器 = M/N。这里用 Input System **合成按键**,
+        //    验的是"读键 → 动作"这一整条线(不是直接调 API —— 那样只能证明方法在)。
+        //    只覆盖得到编辑器这一半:真机上按 A/B 仍要在头显里按一次才算过(与遗留 19 同口径)。
+        var kb = Keyboard.current;
+        if (kb == null)
+        {
+            Check("HUD 呼出键(M/N 合成按键)", false, "没有键盘设备,合成不了按键 → 只能真机验");
+        }
+        else
+        {
+            // 每帧重发一次"按下"(最多 6 帧):XR Device Simulator 这类活动输入源会逐帧重写键盘状态,
+            // 单发一次会被抹掉 —— 同一条代码实测出现过 PASS 也出现过 FAIL,就是被抹掉的那次(坑 36 同族)。
+            bool menuWas = hud.IsMenuOpen;
+            bool menuNow = menuWas;
+            for (int f = 0; f < 6 && menuNow == menuWas; f++)
+            {
+                InputSystem.QueueStateEvent(kb, new KeyboardState(Key.M));
+                InputSystem.Update();
+                yield return null;
+                menuNow = hud.IsMenuOpen;
+            }
+            InputSystem.QueueStateEvent(kb, new KeyboardState());
+            InputSystem.Update();
+            yield return null;
+
+            bool mapWas = hud.IsMinimapVisible;
+            bool mapNow = mapWas;
+            for (int f = 0; f < 6 && mapNow == mapWas; f++)
+            {
+                InputSystem.QueueStateEvent(kb, new KeyboardState(Key.N));
+                InputSystem.Update();
+                yield return null;
+                mapNow = hud.IsMinimapVisible;
+            }
+            InputSystem.QueueStateEvent(kb, new KeyboardState());
+            InputSystem.Update();
+            yield return null;
+            hud.SetMinimapVisible(true);                       // 归位,别把后面的用例带歪
+            bool mapObjBack = hud.minimap == null || hud.minimap.activeSelf;
+
+            Check("HUD 呼出键(M/N 合成按键)", menuNow != menuWas && mapNow != mapWas && mapObjBack,
+                  "M 键让菜单翻转=" + (menuNow != menuWas) + "(" + menuWas + "→" + menuNow + ")"
+                  + ";N 键让小地图翻转=" + (mapNow != mapWas) + ";小地图已归位=" + mapObjBack
+                  + "(真机右手 A/B 走同一条路,需在头显里按一次)");
+        }
     }
 
+    /// <summary>
+    /// HUD 按名找件:v7.26 起件都收在 `FadeContainer` 下,而 `Transform.Find` 只查直接子级(坑 28),
+    /// 所以先从根找、找不到再落到容器上 —— 新旧挂法都能跑,不会因为换代就把两条 HUD 判据打成假 FAIL。
+    /// </summary>
     static T Child<T>(Transform root, string path) where T : Component
     {
         var t = root.Find(path);
+        if (t == null)
+        {
+            var fc = root.Find("FadeContainer");
+            if (fc != null) t = fc.Find(path);
+        }
         return t == null ? null : t.GetComponent<T>();
     }
 

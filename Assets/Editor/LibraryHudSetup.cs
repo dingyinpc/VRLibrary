@@ -29,6 +29,10 @@ public static class LibraryHudSetup
     // 按宽匹配 ⇒ 参考宽恒为 RefW,侧边栏 = RefW/3 就是"屏幕宽的 1/3",与分辨率无关。
     // 字号换算:30 px = 参考宽的 1.9%;PICO 水平 FOV 约 105° ⇒ 字高约 1.9°,在 VR 可读下限之上。
     const float RefW = 1600f;
+    // v7.28 头锁世界空间画布:1600×900 单位 × 0.000699 = 1.119×0.629 m;摆在眼前 1.20 m
+    // ⇒ 横 ±25.0°、竖 ±14.7°(30 单位的字 = 1.00°)。判据一律按角度写(坑 38)。
+    const float HudDistance = 1.20f;
+    const float HudScale = 0.000699f;
     const float PanelFrac = 1f / 3f;
     const float PanelRefW = RefW * PanelFrac;      // = 533.3 参考像素
 
@@ -78,24 +82,53 @@ public static class LibraryHudSetup
         var root = New(kHudName, sceneRoot.transform);
         var hud = root.AddComponent<LibraryHud>();
         var cv = root.AddComponent<Canvas>();
-        cv.renderMode = RenderMode.ScreenSpaceOverlay;
-        cv.sortingOrder = 100;                        // Overlay 不吃 overrideSorting,靠 sortingOrder 压在其它 UI 上
-        var scaler = root.AddComponent<CanvasScaler>();
+        // ── v7.28:改**头锁世界空间画布**(2026-09-27 真机反馈定案)──
+        // Overlay 画布在头显里的落点由"眼缓冲宽高比"决定(PICO 每眼近正方形),顶边被推到约 +45°
+        // ⇒ 用户实测"菜单和小地图太上";而且 Overlay 是单层平贴、没有立体景深。
+        // 世界空间画布挂在 Main Camera 下随头转,张角由"画布尺寸 × 缩放 ÷ 距离"精确决定,判据也能按角度写(坑 38)。
+        cv.renderMode = RenderMode.WorldSpace;
+        cv.sortingOrder = 100;
+        var scaler = root.AddComponent<CanvasScaler>();   // 世界空间下不参与布局,留着只为兼容旧判据
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(RefW, RefW);
-        scaler.matchWidthOrHeight = 0f;               // 按宽匹配:侧边栏的 1/3 才在任何分辨率上都是 1/3
+        scaler.matchWidthOrHeight = 0f;
         root.AddComponent<GraphicRaycaster>();
         root.AddComponent<TrackedDeviceGraphicRaycaster>();
-        var hudGroup = root.AddComponent<CanvasGroup>();
-        hudGroup.alpha = 1f;
+        var hudRt = root.GetComponent<RectTransform>();
+        hudRt.sizeDelta = new Vector2(1600f, 900f);
+        hudRt.localScale = Vector3.one * HudScale;
+        var hudCam = origin != null ? origin.Camera : Camera.main;
+        if (hudCam != null)
+        {
+            root.transform.SetParent(hudCam.transform, false);   // 头锁:不再受眼缓冲宽高比影响
+            root.transform.localPosition = new Vector3(0f, 0f, HudDistance);
+            root.transform.localRotation = Quaternion.identity;
+        }
+        else { sb.AppendLine("  !! 场上没有可用相机 → HUD 没能挂到头锁节点上"); bad++; }
 
-        var backdrop = Backdrop(root.transform);
-        var toggle = MenuToggleButton(root.transform);
+        // "HUD 淡隐容器":需要淡出的东西都收在这棵子物体里,显隐与射线由它的 CanvasGroup 统一管
+        // (运行时 LibraryHud.Update() 按观影态把 alpha 从 1 推到 0,并同步 interactable/blocksRaycasts)。
+        // ⚠ 它必须是**拉满画布的 RectTransform**:uGUI 的布局链只认 RectTransform,中间夹一个纯 Transform,
+        //   所有"拉伸锚点"的子件(侧边栏 MenuPanel / Backdrop / 两页 / 提示条)都算不出父级宽度 ⇒ 宽 0;
+        //   而搭建期按"锚点+画布宽"算依旧是 533,看不出这个错 —— 只有 Play 里读 menuPanel.rect.width 才现形。
+        var fadeContainer = new GameObject("FadeContainer", typeof(RectTransform));
+        fadeContainer.transform.SetParent(root.transform, false);
+        var frt = fadeContainer.GetComponent<RectTransform>();
+        frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one;
+        frt.offsetMin = Vector2.zero; frt.offsetMax = Vector2.zero;
+        fadeContainer.transform.SetAsFirstSibling();    // 容器是唯一的内容层,兄弟序不影响画面
+        var fadeGroup = fadeContainer.AddComponent<CanvasGroup>();
+        fadeGroup.alpha = 1f;
+        fadeGroup.blocksRaycasts = false;               // 静态初值;运行时 LibraryHud.Update() 每帧按 alpha 重写它
+        fadeGroup.interactable = true;
+
+        var backdrop = Backdrop(fadeContainer.transform);
+        var toggle = MenuToggleButton(fadeContainer.transform);
         RectTransform dial; Text floorLabel;
-        Minimap(root.transform, out dial, out floorLabel);
+        hud.minimap = Minimap(fadeContainer.transform, out dial, out floorLabel);
         CanvasGroup menuGroup; GameObject pageHome, pageSettings, quitConfirm, tipSettings, tipQuit;
         Slider volSlider; Text volLabel; Button[] tpButtons; Button btnSettings, btnQuit;
-        var panel = MenuPanel(root.transform, out menuGroup, out pageHome, out pageSettings,
+        var panel = MenuPanel(fadeContainer.transform, out menuGroup, out pageHome, out pageSettings,
             out volSlider, out volLabel, out quitConfirm, out tpButtons,
             out btnSettings, out btnQuit, out tipSettings, out tipQuit);
 
@@ -107,7 +140,7 @@ public static class LibraryHudSetup
         var tps = new KioskTeleporter[3];
         for (int i = 0; i < 3; i++)
         {
-            var go = New("Tp_" + (i + 1), root.transform);
+            var go = New("Tp_" + (i + 1), fadeContainer.transform);
             tps[i] = go.AddComponent<KioskTeleporter>();
             tps[i].origin = origin;
             tps[i].keepRigHeight = false;
@@ -126,7 +159,7 @@ public static class LibraryHudSetup
         }
 
         hud.origin = origin;
-        hud.hudGroup = hudGroup;
+        hud.hudGroup = fadeGroup;
         hud.menuGroup = menuGroup;
         hud.menuPanel = panel.GetComponent<RectTransform>();
         hud.backdrop = backdrop;
@@ -157,12 +190,15 @@ public static class LibraryHudSetup
         BgmSlot(root.transform);
         // 菜单键与小地图排到最后 ⇒ 永远画在侧边栏之上(否则侧栏一开就把菜单键盖住,"再点一次收起"点不到)。
         // 必须在所有兄弟都建完之后做:早先放在 BgmSlot 之前重排,后者一建就又把菜单键挤了一位。
+        // v7.26 起件都收在 FadeContainer 里,重排必须落在那个容器上:
+        // Transform.Find 只查直接子级(坑 28),写在 root 上会取到 null 当场抛异常,连"保存场景"那步都走不到。
         toggle.transform.SetAsLastSibling();
-        root.transform.Find("Minimap").SetAsLastSibling();
+        var miniRt = fadeContainer.transform.Find("Minimap");
+        if (miniRt != null) miniRt.SetAsLastSibling();
 
         sb.AppendLine("  拆旧 HUD " + wiped + " 个;按钮 " + root.GetComponentsInChildren<Button>(true).Length
                       + " 颗;文字 " + root.GetComponentsInChildren<Text>(true).Length + " 块;全部编辑期建好(坑 1)");
-        Verify(root, hud, cv, hudGroup, menuGroup);
+        Verify(root, hud, cv, fadeGroup, menuGroup);
         EditorSceneManager.MarkSceneDirty(scene);
         bool saved = EditorSceneManager.SaveScene(scene);
         sb.AppendLine("  保存场景:" + (saved ? "成功" : "!! 失败(HUD 只在内存里,重启就没了)")
@@ -187,9 +223,10 @@ public static class LibraryHudSetup
             return;
         }
         sb.AppendLine("  节点:" + Tree(root.transform) + "  (Overlay 画布,父级只是归档,不参与定位)");
-        var mg = root.transform.Find("MenuPanel");
+        var mg = HudContent(root).Find("MenuPanel");
+        var fc = root.transform.Find("FadeContainer");
         Verify(root, root.GetComponent<LibraryHud>(), root.GetComponent<Canvas>(),
-               root.GetComponent<CanvasGroup>(), mg == null ? null : mg.GetComponent<CanvasGroup>());
+               fc == null ? null : fc.GetComponent<CanvasGroup>(), mg == null ? null : mg.GetComponent<CanvasGroup>());
         RaycastWiring(root);
         Flush("Logs/hud-verify.txt");
         Debug.Log("[HUD] 复核 → Logs/hud-verify.txt(未过项 " + bad + ")");
@@ -252,15 +289,39 @@ public static class LibraryHudSetup
 
     // ─────────────────────────────────────────────────────── 复核
 
+    /// <summary>
+    /// HUD 内容的查找根:v7.26 起件都收在 `FadeContainer` 下,而 `Transform.Find` 只查直接子级(坑 28),
+    /// 所以按名找件必须先落到容器上;旧场景(没有容器)退回根本身 ⇒ 换结构不会把复核打成一片假红。
+    /// </summary>
+    static Transform HudContent(GameObject root)
+    {
+        var fc = root.transform.Find("FadeContainer");
+        return fc != null ? fc : root.transform;
+    }
+
     static void Verify(GameObject root, LibraryHud hud, Canvas cv, CanvasGroup hudGroup, CanvasGroup menuGroup)
     {
         sb.AppendLine("  ── 复核 ─────────────────────────────");
         if (hud == null) { Bad("根物体上没有 LibraryHud"); return; }
-        BadIf(cv == null || cv.renderMode != RenderMode.ScreenSpaceOverlay, "画布是 ScreenSpaceOverlay");
+        var content = HudContent(root);
+        // 世界空间 + 头锁:画布挂在 Main Camera 下、距眼前 HudDistance;张角由"尺寸×缩放÷距离"算。
+        var hudRtV = root.GetComponent<RectTransform>();
+        float dist = hudRtV != null ? Mathf.Abs(hudRtV.localPosition.z) : 0f;
+        var camT = hud.origin != null && hud.origin.Camera != null ? hud.origin.Camera.transform : null;
+        bool headLocked = camT != null && root.transform.parent == camT;
+        BadIf(cv == null || cv.renderMode != RenderMode.WorldSpace,
+            "画布是世界空间(真机立体正确、不受眼缓冲宽高比影响)");
+        BadIf(!headLocked, "画布挂在 Main Camera 下(头锁);实测父级="
+              + (root.transform.parent == null ? "(无)" : root.transform.parent.name));
+        float halfW = 999f, halfH = 999f;
+        if (hudRtV != null && dist > 0.01f)
+        {
+            halfW = Mathf.Atan(hudRtV.rect.width * hudRtV.localScale.x * 0.5f / dist) * Mathf.Rad2Deg;
+            halfH = Mathf.Atan(hudRtV.rect.height * hudRtV.localScale.y * 0.5f / dist) * Mathf.Rad2Deg;
+        }
+        BadIf(halfW < 18f || halfW > 32f || halfH < 8f || halfH > 20f,
+            string.Format("张角在舒适区(横 {0:0.0}° / 竖 {1:0.0}°,要 18~32 / 8~20;旧 Overlay 竖边≈45°)", halfW, halfH));
         var scaler = root.GetComponent<CanvasScaler>();
-        BadIf(scaler == null || scaler.uiScaleMode != CanvasScaler.ScaleMode.ScaleWithScreenSize
-              || Mathf.Abs(scaler.matchWidthOrHeight) > 0.01f,
-              "CanvasScaler 按宽匹配(侧边栏的 1/3 才与分辨率无关)");
         // "在不在角上"要能判伪,但**不能拿 Canvas.scaleFactor 换算**:编辑态它是未刷新的缓存值
         // (实测读出 1,于是 2855 的屏幕宽被当成参考宽,量出"侧边栏只占 19%"这种假结论)。
         // matchWidthOrHeight=0 ⇒ 参考宽恒等于 referenceResolution.x;高度按视口比例换算一次即可。
@@ -271,16 +332,25 @@ public static class LibraryHudSetup
             var srt = cv == null ? null : cv.GetComponent<RectTransform>();
             if (srt != null && srt.rect.width > 1f) ch = cw * srt.rect.height / srt.rect.width;
         }
-        var rToggle = CornerOf(root.transform.Find("MenuToggle") as RectTransform, cw, ch);
-        var rMini = CornerOf(root.transform.Find("Minimap") as RectTransform, cw, ch);
-        var rPanel = AnchorSpanOf(root.transform.Find("MenuPanel") as RectTransform, cw, ch);
+        var rToggle = CornerOf(content.Find("MenuToggle") as RectTransform, cw, ch);
+        var rMini = CornerOf(content.Find("Minimap") as RectTransform, cw, ch);
+        var rPanel = AnchorSpanOf(content.Find("MenuPanel") as RectTransform, cw, ch);
         sb.AppendLine(string.Format("    画布参考尺寸 {0:0}×{1:0}  菜单键 x{2:0} y顶{3:0}  小地图 x右{4:0}  侧栏宽{5:0}(占 {6:0}%) 侧栏高{7:0}",
             cw, ch, rToggle.xMin, ch - rToggle.yMax, rMini.xMax, rPanel.width,
             rPanel.width / Mathf.Max(1e-3f, cw) * 100f, rPanel.height));
         BadIf(rToggle.xMin > 60f || ch - rToggle.yMax > 60f, "菜单键贴在左上角(距两边 ≤60 参考像素)");
-        BadIf(cw - rMini.xMax > 60f || ch - rMini.yMax > 60f, "小地图贴在右上角(距两边 ≤60 参考像素)");
+        BadIf(cw - rMini.xMax > 60f || rMini.yMin > 60f, "小地图贴在右下角(距右/下两边 ≤60 画布单位)");
         BadIf(Mathf.Abs(rPanel.width - cw / 3f) > cw * 0.02f, "侧边栏宽 = 屏幕 1/3(±2%)");
         BadIf(Mathf.Abs(rPanel.height - ch) > ch * 0.02f, "侧边栏占满上下(±2%)");
+        // 上面两条是按"锚点 + 画布宽"算出来的,算出 533 也可能场上真实 rect 是 0
+        // (容器若是纯 Transform、布局链断掉就会这样,见容器那段的注释)。所以再量一次**真实 rect**:
+        // 这条判据是拿冒烟那次 FAIL(侧边栏实宽 0 = 屏宽 0%)反推出来的,补上它才能在搭建期就变红。
+        Canvas.ForceUpdateCanvases();
+        var panelRt = content.Find("MenuPanel") as RectTransform;
+        float realW = panelRt != null ? panelRt.rect.width : 0f;
+        BadIf(Mathf.Abs(realW - cw / 3f) > cw * 0.02f,
+            "侧边栏真实 rect 宽 = 画布 1/3(真实 " + realW.ToString("0")
+            + " / 按锚点算 " + rPanel.width.ToString("0") + ")");
         // 中心锚点写错 sizeDelta 会让整排按钮宽成负数 ⇒ 场上"东西都在"却一个看不见(实拍抓到过)。
         // 阈值必须"变得出红":上一版写"宽<60 算小",而 -60 取绝对值正好是 60,卡在边界上照样绿。
         // 所以这里每项给"该有多宽"的下限,并把实测宽全打出来。
@@ -299,19 +369,19 @@ public static class LibraryHudSetup
         foreach (var it in items)
         {
             string pn = (string)it[0];
-            var rt = root.transform.Find(pn) as RectTransform;
-            var r = RefRect(rt, cw, ch);
+            var rt = content.Find(pn) as RectTransform;
+            var r = rt == null ? new Rect(0f, 0f, 0f, 0f) : rt.rect;   // 画布单位:世界空间下别再走 GetWorldCorners
             measured.Append(pn.Substring(pn.LastIndexOf('/') + 1) + "=" + r.width.ToString("0")
                             + "×" + r.height.ToString("0") + "  ");
             if (rt == null || r.width < (float)it[1] * cw || r.height < 24f)
                 tooSmall.Append(pn + " ");
         }
         sb.AppendLine("    实测尺寸:" + measured);
-        var rTog = CornerOf(root.transform.Find("MenuToggle") as RectTransform, cw, ch);
+        var rTog = CornerOf(content.Find("MenuToggle") as RectTransform, cw, ch);
         var overl = new System.Text.StringBuilder();
         foreach (var tn in new[] { "MenuPanel/PageHome/Title", "MenuPanel/PageSettings/Title" })
         {
-            var r = CornerOf(root.transform.Find(tn) as RectTransform, cw, ch);
+            var r = CornerOf(content.Find(tn) as RectTransform, cw, ch);
             if (r.xMin < rTog.xMax && r.xMax > rTog.xMin && r.yMin < rTog.yMax && r.yMax > rTog.yMin)
                 overl.Append(tn + " ");
         }
@@ -322,6 +392,11 @@ public static class LibraryHudSetup
               || root.GetComponentsInChildren<TrackedDeviceGraphicRaycaster>(true).Length != 1,
             "键鼠与手柄射线各一份 raycaster");
         BadIf(hudGroup == null || menuGroup == null, "两级 CanvasGroup(hudGroup 淡隐 / menuGroup 侧边栏)");
+        // 结构换代判据:代码从 v7.26 起把件都收进 FadeContainer,`hudGroup` 必须指向容器那份。
+        // 场景若还是旧结构(件直接挂根),这里会亮 ⇒ 去跑 VRLibrary/装小地图与菜单 重建成新结构。
+        var fcCheck = root.transform.Find("FadeContainer");
+        BadIf(fcCheck == null || hud.hudGroup != fcCheck.GetComponent<CanvasGroup>(),
+            "淡隐容器 FadeContainer 在、且 hudGroup 指向它" + (fcCheck == null ? "(当前是旧结构:件直接挂根)" : ""));
         BadIf(hud.origin == null, "origin 接到 XROrigin");
         BadIf(menuGroup != null && menuGroup.alpha > 0.01f, "初始菜单已收起(alpha="
               + menuGroup.alpha.ToString("0.00") + ")");
@@ -335,7 +410,7 @@ public static class LibraryHudSetup
                     t.destination.name + " @ " + Pos(t.destination) + " keepRigHeight=" + t.keepRigHeight));
         }
 
-        var s = root.transform.Find("MenuPanel/PageSettings/VolSlider");
+        var s = content.Find("MenuPanel/PageSettings/VolSlider");
         var sl = s == null ? null : s.GetComponent<Slider>();
         BadIf(sl == null || sl.fillRect == null || sl.handleRect == null, "音量滑条的 fillRect/handleRect 都接上");
         BadIf(sl != null && Mathf.Abs(sl.value - LibraryHud.DefaultVolume) > 0.001f,
@@ -347,13 +422,14 @@ public static class LibraryHudSetup
         BadIf(tips != 2, "射线悬停提示 2 条(设置/关机),实到 " + tips);
         BadIf(Deep(root.transform, "QuitConfirm") == null, "退出的两下确认那一行在");
         BadIf(root.transform.Find("BgmSlot") == null, "BGM 空槽在(音频放进 Resources/bgm 即自动播)");
-        var bg = root.transform.Find("Backdrop");
+        BadIf(hud.minimap == null, "小地图接到 hud.minimap(呼出键 B/N 要能收放它)");
+        var bg = content.Find("Backdrop");
         BadIf(bg == null || bg.gameObject.activeSelf, "backdrop 存在且初始不挡射线");
         BadIf(Deep(root.transform, "PageSettings") == null || Deep(root.transform, "PageSettings").gameObject.activeSelf,
             "设置页初始收起");
         // 真正要成立的是"菜单键画在侧边栏之上",与它排倒数第几无关(uGUI 同级后建的画在上面)
-        var tog = root.transform.Find("MenuToggle");
-        var pnl = root.transform.Find("MenuPanel");
+        var tog = content.Find("MenuToggle");
+        var pnl = content.Find("MenuPanel");
         BadIf(tog == null || pnl == null || tog.GetSiblingIndex() <= pnl.GetSiblingIndex(),
             "菜单键排在侧边栏之后(侧栏展开时仍点得到它);实测 toggle="
             + (tog == null ? "-" : tog.GetSiblingIndex().ToString())
@@ -419,11 +495,13 @@ public static class LibraryHudSetup
         return b;
     }
 
-    static void Minimap(Transform parent, out RectTransform dial, out Text floorLabel)
+    static GameObject Minimap(Transform parent, out RectTransform dial, out Text floorLabel)
     {
-        var box = Box("Minimap", parent, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
-            new Vector2(-28f, -28f), new Vector2(360f, 246f), None);
-        // pivot 必须是 (0.5,1) 让它从顶往下挂;写成 (0.5,0.5) 会把圆盘上半截顶到屏幕外(实拍已见过)
+        // v7.28:小地图从"右上"改到**右下**(用户口径:菜单左前、小地图右前下方)——
+        // 旧版贴在画布右上角,真机里读起来就在视线上方,叠上 Overlay 的宽高比问题就是"太上"。
+        var box = Box("Minimap", parent, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
+            new Vector2(-28f, 28f), new Vector2(360f, 246f), None);
+        // 盘面仍从盒顶往下挂:pivot 写 (0.5,0.5) 会把圆盘上半截顶出盒子(实拍已见过)
         var ring = BoxSprite("Ring", box.transform, "Assets/Textures/HudDialRing.png",
             new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
             new Vector2(0f, 0f), new Vector2(190f, 190f), InkDim);
@@ -437,9 +515,11 @@ public static class LibraryHudSetup
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             new Vector2(0f, 72f), new Vector2(60f, 38f));
         // 用户要"小地图下面标着本地位置":这行由 LibraryHud 每帧写成"当前位置 · 图书馆 2 楼"
-        floorLabel = Label("FloorLabel", box.transform, "当前位置 · 图书馆 1 楼", 32, Ink, TextAnchor.UpperCenter,
-            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 1f),
-            new Vector2(0f, -196f), new Vector2(360f, 40f));
+        // 楼层文字改到盒内底部(旧版挂在盒下 -196,搬到右下角后会伸到画布外面去)
+        floorLabel = Label("FloorLabel", box.transform, "当前位置 · 图书馆 1 楼", 32, Ink, TextAnchor.LowerCenter,
+            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+            new Vector2(0f, 8f), new Vector2(360f, 40f));
+        return box;                     // 交给 LibraryHud.minimap:B/N(真机右手 B)要能收放它
     }
 
     static GameObject MenuPanel(Transform parent, out CanvasGroup menuGroup, out GameObject pageHome,

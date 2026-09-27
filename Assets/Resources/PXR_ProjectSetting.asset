@@ -36,7 +36,7 @@ MonoBehaviour:
   spatialMesh: 0
   meshLod: 0
   superResolution: 0
-  normalSharpening: 0
+  normalSharpening: 1
   qualitySharpening: 0
   fixedFoveatedSharpening: 0
   selfAdaptiveSharpening: 0
