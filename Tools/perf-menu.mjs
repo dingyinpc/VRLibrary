@@ -37,6 +37,21 @@ if (!menuPath) {
 }
 const hit = await discoverPort(process.env.UNITY_PROJECT || 'VRlibrary');
 if (!hit) { console.error('没找到活桥 —— 编辑器要开着且不能最小化'); process.exit(5); }
+
+// 端口会随域重载漂(本机实测同一天在 6401/6402 之间来回),而**同时开着好几个 Unity 工程**:
+// 扫描时 6402=VRlibrary、6403=MCP测试 是并存的。所以写场景之前必须**当场认一遍身份**:
+// 只认 projectPath 落在 VRlibrary 且活动场景是 SmartLibrary 的那一个,别的宁可拒绝执行。
+const who = await call(hit.port, 'ping', {}, 15000);
+const d = who && who.success ? who.data : null;
+if (!d) { console.error(`端口 ${hit.port} 无响应(僵尸监听?先 Restart Bridge Server)`); process.exit(3); }
+const okProject = String(d.projectPath || '').replace(/\\/g, '/').toLowerCase().endsWith('/vrlibrary');
+const okScene = String(d.activeScene || '').includes('SmartLibrary');
+console.log(`[端口 ${d.bridgePort || hit.port} · ${d.projectPath} · ${d.activeScene} · dirty=${d.sceneDirty}]`);
+if (!okProject || !okScene) {
+  console.error(`拒绝执行:认到的不是 VRlibrary/SmartLibrary(工程=${d.projectPath} 场景=${d.activeScene})`);
+  process.exit(6);
+}
+
 const res = await call(hit.port, 'runMenuItem', { menuPath }, Number(timeoutSec) * 1000);
 if (!res) { console.error('端口 ' + hit.port + ' 无响应'); process.exit(3); }
 if (res.data) console.log(JSON.stringify(res.data));
