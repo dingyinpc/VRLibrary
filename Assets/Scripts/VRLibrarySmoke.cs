@@ -170,6 +170,9 @@ public class VRLibrarySmoke : MonoBehaviour
 
     IEnumerator Run()
     {
+        // 区域剔除/文字剔除是**画面优化**,冒烟测的是**逻辑内容**:整片渲染器被关掉时,
+        // 二层书架与露台影院在画面里是"空的",容易把这轮测试引到假失败上。这里一律让开。
+        LibraryZoneCuller.ForceAll = true;
         Line("运行时冒烟测试  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         Line("Unity " + Application.unityVersion + "   场景 " + UnityEngine.SceneManagement.SceneManager.GetActiveScene().path);
         frame0 = Time.frameCount; t0 = Time.time;

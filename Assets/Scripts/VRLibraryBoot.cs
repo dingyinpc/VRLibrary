@@ -25,10 +25,50 @@ public class VRLibraryBoot : MonoBehaviour
 
     IEnumerator Start()
     {
+        EnableFfr();
         Debug.Log("[VRLibrary] 清晰度自检(建场景后) " + Snapshot());
         if (Application.isEditor) yield break;      // 编辑器没有 XR 显示,再等也不会有眼缓冲数值
         yield return new WaitForSecondsRealtime(1.5f);
         Debug.Log("[VRLibrary] 清晰度自检(1.5s 后) " + Snapshot());
+    }
+
+    // ------------------------------------------------------------ 固定视场渲染(FFR)
+
+    /// <summary>PICO 的 FFR 档位:None=-1, Low=0, Med=1, High=2, TopHigh=3。</summary>
+    const int FfrLevel = 2;
+
+    /// <summary>
+    /// 开固定视场渲染:中心保持全分辨率、边缘降采样,一体机上通常省 20~30% GPU,
+    /// 而边缘的降采样正好被镜片畸变遮住。**走反射调用**是为了不把 SDK 的类型绑死进程序集
+    /// (本工程其它地方也是这么做的:PXR_Manager 就是反射挂上去的),SDK 换版本也不会编译不过。
+    /// 编辑器里不调(那是本机显卡,调了没意义还会刷告警),所以这行只在真机 logcat 里出现。
+    /// </summary>
+    static void EnableFfr()
+    {
+        if (Application.isEditor) return;
+        try
+        {
+            var t = System.Type.GetType("Unity.XR.PXR.PXR_FoveationRendering, Unity.XR.PICO");
+            var e = System.Type.GetType("Unity.XR.PXR.FoveationLevel, Unity.XR.PICO");
+            if (t == null || e == null) { Debug.LogWarning("[VRLibrary] FFR:找不到 PXR 类型,跳过"); return; }
+            var mi = t.GetMethod("SetFoveationLevel", new[] { e, typeof(bool) });
+            if (mi == null) { Debug.LogWarning("[VRLibrary] FFR:找不到 SetFoveationLevel,跳过"); return; }
+            bool ok = (bool)mi.Invoke(null, new object[] { System.Enum.ToObject(e, FfrLevel), false });
+            Debug.Log("[VRLibrary] FFR 设置 " + FfrName(e) + " → " + (ok ? "成功" : "**失败(设备可能不支持)**") + ";" + Snapshot());
+        }
+        catch (System.Exception ex) { Debug.LogWarning("[VRLibrary] FFR 调用异常:" + ex.Message); }
+    }
+
+    static string FfrName(System.Type e)
+    {
+        try
+        {
+            var t = System.Type.GetType("Unity.XR.PXR.PXR_FoveationRendering, Unity.XR.PICO");
+            var mi = t == null ? null : t.GetMethod("GetFoveationLevel", System.Type.EmptyTypes);
+            if (mi == null) return FfrLevel.ToString();
+            return mi.Invoke(null, null).ToString();
+        }
+        catch { return FfrLevel.ToString(); }
     }
 
     static string Snapshot()
