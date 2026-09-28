@@ -651,7 +651,17 @@ public class VRLibrarySmoke : MonoBehaviour
 
         int books = FindObjectsOfType<LibraryBook>().Length;
         int grabs = FindObjectsOfType<UnityEngine.XR.Interaction.Toolkit.XRGrabInteractable>().Length;
-        Check("书籍可抓取数", books == 262 && grabs == 262, "运行中 LibraryBook=" + books + " GrabInteractable=" + grabs);
+        int clicks = 0, noCol = 0, rbLeft = 0;
+        foreach (var b in FindObjectsOfType<LibraryBook>())
+        {
+            if (b.GetComponent<UnityEngine.XR.Interaction.Toolkit.XRSimpleInteractable>() != null) clicks++;
+            if (b.GetComponent<Collider>() == null) noCol++;
+            if (b.GetComponent<Rigidbody>() != null) rbLeft++;
+        }
+        // 2026-09-28 用户定案:书只可点击、不可抓(可抓=必须有刚体=永远进不了静态合批)
+        Check("书籍点击可读(不再可抓)", books == 262 && clicks == books && grabs == 0 && rbLeft == 0 && noCol == 0,
+            "运行中 LibraryBook=" + books + " 可点击=" + clicks + " 残留可抓=" + grabs
+            + " 残留刚体=" + rbLeft + " 缺碰撞体=" + noCol);
 
         var anchors = FindObjectsOfType<UnityEngine.XR.Interaction.Toolkit.TeleportationAnchor>();
         int up = 0, upBad = 0;

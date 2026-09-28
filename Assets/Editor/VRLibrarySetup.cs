@@ -365,12 +365,10 @@ public static class VRLibrarySetup
                 book.transform.localScale = new Vector3(0.34f, 0.26f, 0.07f);
                 book.GetComponent<MeshRenderer>().sharedMaterial = bookMats[bookCount % bookMats.Length];
 
-                var rb = book.AddComponent<Rigidbody>();
-                rb.useGravity = true;
-                rb.interpolation = RigidbodyInterpolation.Interpolate;
-
-                var grab = book.AddComponent<XRGrabInteractable>();
-                grab.movementType = XRGrabInteractable.MovementType.VelocityTracking;
+                // 2026-09-28 用户定案:书**只可点击、不可抓**。
+                // 挂 Rigidbody 就会被判成"会动的东西",整片书永远进不了静态合批(性能账见知识库);
+                // 点击读取由 LibraryBook 绑 XRSimpleInteractable 的 selectEntered 完成。
+                book.AddComponent<XRSimpleInteractable>();
 
                 var libBook = book.AddComponent<LibraryBook>();
                 libBook.title = $"智能图书馆样本图书 {shelfIndex + 1}-{l + 1}-{b + 1}";

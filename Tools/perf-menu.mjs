@@ -37,6 +37,8 @@ const MENUS = {
   'occ-report': 'VRLibrary/性能·⑧ 遮挡剔除·现状(只报告)',
   'occ-bake': 'VRLibrary/性能·⑧ 标记并烘焙遮挡剔除(改场景,可能要几分钟)',
   'occ-revert': 'VRLibrary/性能·⑧ 回退(清遮挡数据 + 去标记)',
+  'bookclick': 'VRLibrary/性能·⑨ 书本改成点击阅读(去抓取 + 去刚体,改场景)',
+  'bookclick-verify': 'VRLibrary/性能·⑨ 复核(只报告)',
 };
 
 const [short, timeoutSec = '900'] = process.argv.slice(2);

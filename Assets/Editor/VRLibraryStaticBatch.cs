@@ -38,10 +38,25 @@ public static class VRLibraryStaticBatch
     /// <summary>会移动物体的脚本 —— 它们自己所在的物体与后代一律不标。</summary>
     static readonly string[] Movers =
     {
-        "LibraryBook", "HoloOrbiter", "TerraceScreen", "KioskTeleporter", "TerraceCinema",
+        "HoloOrbiter", "TerraceScreen", "KioskTeleporter", "TerraceCinema",
         "LibraryHud", "SprintController", "BookSearchController", "BookReader",
         "LibraryUIController", "DayNightController", "VRLibrarySmoke", "BookReturnSocket",
-        "VRLibraryBoot", "VideoDecodeProbe",
+        "VRLibraryBoot", "VideoDecodeProbe", "VRLibraryPerfProbe", "LibraryZoneCuller",
+        "VRLibraryPerfSweep",
+    };
+
+    /// <summary>
+    /// **不移动自己所在物体**的组件白名单(2026-09-28 加)。
+    /// 旧规则是"只要挂着任何 MonoBehaviour 就不标",那是为了保守;但 2026-09-28 用户定案
+    /// "书只可点击、不可抓"之后,书身上只剩 XRSimpleInteractable + LibraryBook(都不动变换),
+    /// 再按旧规则就会把**整片书**继续挡在合批外面 —— 而那正是最大的一块。
+    /// 所以改成:白名单里的组件不算"会动",其余 MonoBehaviour 一律仍然拦截。
+    /// </summary>
+    static readonly string[] Harmless =
+    {
+        "LibraryBook", "XRSimpleInteractable", "XRBaseInteractable",
+        "TeleportationAnchor", "TeleportationArea", "XRSocketInteractor", "XRPokeInteractable",
+        "HudHoverTip", "UIButtonInteraction",
     };
 
     [MenuItem("VRLibrary/性能·① 静态合批补标(改场景并自动保存)")]
@@ -85,7 +100,10 @@ public static class VRLibraryStaticBatch
             var r = g.GetComponent<MeshRenderer>();
             if (r == null) { Bump(reasons, "没有 MeshRenderer"); continue; }
             var mf = g.GetComponent<MeshFilter>();          // sharedMesh 在 MeshFilter 上,不在 MeshRenderer 上
-            if (mf == null || mf.sharedMesh == null) { Bump(reasons, "没有网格"); continue; }
+            // TextMesh 自带生成网格、没有 MeshFilter;能不能被静态合批由 Unity 说了算,
+            // 标上去最多是"没效果",不标就永远没机会 —— 所以这里放行(实测见知识库性能总账)
+            bool textOnly = mf == null && g.GetComponent<TextMesh>() != null;
+            if (!textOnly && (mf == null || mf.sharedMesh == null)) { Bump(reasons, "没有网格"); continue; }
             var flags = GameObjectUtility.GetStaticEditorFlags(g);
             if ((flags & StaticEditorFlags.BatchingStatic) != 0) { already++; continue; }
 
@@ -156,11 +174,11 @@ public static class VRLibraryStaticBatch
             if (driven.Contains(cur)) return "被脚本引用驱动(会跟着动)";
             if (cur.GetComponent<Rigidbody>() != null) return "祖先有 Rigidbody";
             var mb = cur.GetComponents<MonoBehaviour>();
-            if (mb.Length > 0)
+            for (int i = 0; i < mb.Length; i++)
             {
-                for (int i = 0; i < mb.Length; i++)
-                    if (mb[i] != null) return "自身或祖先挂着脚本 " + mb[i].GetType().Name;
-                return "自身或祖先有丢失的脚本(类型找不到了,不敢当静物)";
+                if (mb[i] == null) return "自身或祖先有丢失的脚本(类型找不到了,不敢当静物)";
+                var tn = mb[i].GetType().Name;
+                if (Array.IndexOf(Harmless, tn) < 0) return "自身或祖先挂着会动的脚本 " + tn;
             }
         }
         return null;

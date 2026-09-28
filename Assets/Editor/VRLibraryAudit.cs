@@ -239,13 +239,13 @@ public static class VRLibraryAudit
         var missCol = new List<string>(); var emptyTitle = new List<string>();
         foreach (var b in books)
         {
-            if (b.GetComponent<XRGrabInteractable>() == null) missGrab.Add(Chain(b.gameObject) + " title=" + b.title);
-            if (b.GetComponent<Rigidbody>() == null) missRb.Add(Chain(b.gameObject));
+            if (b.GetComponent<XRSimpleInteractable>() == null) missGrab.Add(Chain(b.gameObject) + " title=" + b.title);
+            if (b.GetComponent<Rigidbody>() != null) missRb.Add(Chain(b.gameObject));   // 2026-09-28:现在**不该**有刚体
             if (b.GetComponent<Collider>() == null) missCol.Add(Chain(b.gameObject));
             if (string.IsNullOrEmpty(b.title) || string.IsNullOrEmpty(b.summary)) emptyTitle.Add(Chain(b.gameObject));
         }
-        Report(sb, missGrab.Count == 0, "书本总数 " + books.Count + " 本 · 缺抓取组件", missGrab.Count, missGrab.Take(kSample).ToList());
-        Report(sb, missRb.Count == 0, "缺 Rigidbody(抓取会掉穿)", missRb.Count, missRb.Take(kSample).ToList());
+        Report(sb, missGrab.Count == 0, "书本总数 " + books.Count + " 本 · 缺可点击组件(XRSimpleInteractable)", missGrab.Count, missGrab.Take(kSample).ToList());
+        Report(sb, missRb.Count == 0, "书本残留 Rigidbody(有刚体就会被判成会动、破坏静态合批)", missRb.Count, missRb.Take(kSample).ToList());
         Report(sb, missCol.Count == 0, "缺 Collider(射线点不到)", missCol.Count, missCol.Take(kSample).ToList());
         Report(sb, emptyTitle.Count == 0, "书名/正文为空", emptyTitle.Count, emptyTitle.Take(kSample).ToList());
 
