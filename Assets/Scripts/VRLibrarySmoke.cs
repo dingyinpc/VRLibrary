@@ -229,6 +229,67 @@ public class VRLibrarySmoke : MonoBehaviour
             "《" + book.title + "》面板=" + opened + " 正文" + body.Length + "字 页码\"" + p0 + "\"→\"" + p1
             + "\" 关合=" + closed + " 书签 " + bmBefore + "→" + bmAfter);
         Check("阅读面板·翻页", pHome != p1, "首页\"" + pHome + "\"→前进两页\"" + p1 + "\"(末页书签恢复不再误报)");
+
+        // 2026-09-28 用户报"点书点不开":这里走一次**真·射线选中**(XRInteractionManager.SelectEnter),
+        // 把"输入/层遮罩"与"逻辑"分开定位 —— 抓取走的是手碰碰撞体,不需要射线,所以以前能抓不代表射线打得中。
+        var mgr = FindObjectOfType<UnityEngine.XR.Interaction.Toolkit.XRInteractionManager>();
+        var inter = book.GetComponent<UnityEngine.XR.Interaction.Toolkit.XRBaseInteractable>();
+        var rays = FindObjectsOfType<UnityEngine.XR.Interaction.Toolkit.XRRayInteractor>();
+        var ray = rays.Length > 0 ? rays[0] : null;
+        bool selOpened = false; string why;
+        if (mgr == null) why = "场上没有 XRInteractionManager";
+        else if (inter == null) why = "书上没有可交互组件";
+        else if (ray == null) why = "场上没有 XRRayInteractor";
+        else
+        {
+            r.Close();
+            bool can = ray.CanSelect(inter);
+            mgr.SelectEnter(ray, inter);
+            selOpened = r.panelRoot.activeSelf;
+            mgr.SelectExit(ray, inter);
+            r.Close();
+            why = ray.name + " 可选中=" + can
+                + " 射线raycastMask=" + ray.raycastMask.value + " 书层=" + book.gameObject.layer
+                + " 交互器层=" + ray.interactionLayers.value + " 可交互层=" + inter.interactionLayers.value
+                + " → 面板=" + selOpened;
+        }
+        Check("书籍点击链路(射线选中→开面板)", selOpened, why);
+
+        // 射线**打得中**吗:对抽样书各自"站到书正前方 1.2m"打一条射线,看第一阻挡是谁。
+        // 抓取走的是手碰碰撞体(overlap),点击要靠射线 —— 书架的前沿/挡板完全可能挡在书前面,
+        // 这就是"以前能抓、现在点不开"的最可能原因。(上一次从相机正前方打,目标在 19.2m 外,测的是射程不是遮挡)
+        int scanned = 0, sampled = 0, reachable = 0, precise = 0; var blockers = new List<string>();
+        foreach (var b in FindObjectsOfType<LibraryBook>())
+        {
+            if (b.GetComponent<Collider>() == null) continue;
+            if (scanned % 12 != 0) { scanned++; continue; }   // 抽样:每 12 本取 1 本
+            scanned++; sampled++;
+            var p = b.transform.position;
+            // 从 4 个水平方向各试一次(点击板贴在整行包围盒的 4 个侧面上,过道在哪个方向都能打到)
+            // 门禁 = "射线不再被书架吃掉、点下去能开某本书";另外单独报"是否精确开的就是抽样那一本"(参考量)
+            bool ok = false, exact = false; string block = "";
+            foreach (var d in new[] { Vector3.right, Vector3.left, Vector3.forward, Vector3.back })
+            {
+                var origin = p + d * 1.5f;
+                RaycastHit h;
+                bool hit = Physics.Raycast(origin, (p - origin).normalized, out h, 3.5f, ~0, QueryTriggerInteraction.Ignore);
+                if (!hit) { if (block.Length == 0) block = "打空"; continue; }
+                if (h.collider.GetComponentInParent<LibraryBook>() == b) { ok = true; exact = true; break; }
+                var pl = h.collider.GetComponent<LibraryShelfClick.Plate>();
+                if (pl != null)
+                {
+                    ok = true;
+                    if (pl.Nearest(h.point) == b) exact = true;
+                    break;
+                }
+                if (block.Length == 0) block = h.collider.name + "@" + h.distance.ToString("0.00") + "m";
+            }
+            if (ok) { reachable++; if (exact) precise++; }
+            else if (blockers.Count < 4) blockers.Add("《" + b.title + "》被 " + block + " 挡住");
+        }
+        Check("射线能打到书(书架不挡)", sampled > 0 && reachable == sampled,
+            "全场 " + scanned + " 本,抽样 " + sampled + " 本 → 可点中 " + reachable + " 本(精确命中本身 " + precise + " 本)"
+            + (blockers.Count > 0 ? " · 反例:" + string.Join(" | ", blockers) : " · 全通"));
     }
 
     IEnumerator TestSearchAndTeleport()
