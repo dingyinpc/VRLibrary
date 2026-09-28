@@ -26,10 +26,48 @@ public class VRLibraryBoot : MonoBehaviour
     IEnumerator Start()
     {
         EnableFfr();
+        ApplyTargetFrameRate();
         Debug.Log("[VRLibrary] 清晰度自检(建场景后) " + Snapshot());
         if (Application.isEditor) yield break;      // 编辑器没有 XR 显示,再等也不会有眼缓冲数值
         yield return new WaitForSecondsRealtime(1.5f);
         Debug.Log("[VRLibrary] 清晰度自检(1.5s 后) " + Snapshot());
+    }
+
+    // ------------------------------------------------------------ 帧率目标(与 ASW 联动)
+
+    /// <summary>
+    /// ASW 开着的时候,应用**必须按半帧率提交**(72Hz → 36),否则运行期没有可插合成的空档,等于白开。
+    /// 这里**不写死常量**,而是去读 `PXR_Settings.enableAppSpaceWarp` —— 免得"菜单把 ASW 开了、
+    /// 代码里的常量还是关的"这种两处不同步的坑(本工程已经在"档位写在哪儿"上踩过两次)。
+    /// 走反射是为了不把 SDK 类型绑进程序集。
+    /// </summary>
+    static void ApplyTargetFrameRate()
+    {
+        if (Application.isEditor) return;
+        int hz = Screen.currentResolution.refreshRate > 1 ? Screen.currentResolution.refreshRate : 72;
+        bool asw = AswEnabled();
+        Application.targetFrameRate = asw ? Mathf.Max(1, hz / 2) : hz;
+        Debug.Log("[VRLibrary] 帧率目标 " + Application.targetFrameRate
+            + "(" + (asw ? "ASW 已开 → 半刷新率" : "ASW 未开 → 跟刷新率") + ",刷新率 " + hz + "Hz)");
+    }
+
+    static bool AswEnabled()
+    {
+        try
+        {
+            var t = System.Type.GetType("Unity.XR.PXR.PXR_Settings, Unity.XR.PICO");
+            if (t == null) return false;
+            var mi = t.GetMethod("GetSettings", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var inst = mi == null ? null : mi.Invoke(null, null);
+            if (inst == null) return false;
+            var fi = t.GetField("enableAppSpaceWarp",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (fi == null) return false;
+            var v = fi.GetValue(inst);
+            if (v is bool) return (bool)v;
+            return System.Convert.ToInt32(v) != 0;      // SDK 内部按 ushort 传,这里两种都认
+        }
+        catch { return false; }
     }
 
     // ------------------------------------------------------------ 固定视场渲染(FFR)

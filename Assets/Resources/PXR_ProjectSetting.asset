@@ -23,7 +23,7 @@ MonoBehaviour:
   eyetrackingCalibration: 0
   enableETFR: 0
   foveationLevel: 2
-  latelatching: 0
+  latelatching: 1
   latelatchingDebug: 0
   enableSubsampled: 0
   bodyTracking: 0

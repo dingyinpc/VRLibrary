@@ -27,6 +27,16 @@ const MENUS = {
   'bake-uv1': 'VRLibrary/性能·⑥ 给模型生成 UV1(改导入设置)',
   'bake-probes': 'VRLibrary/性能·⑥ 布光探针(改场景)',
   'bake-lights': 'VRLibrary/性能·⑥ 灯全部改 Baked(改场景)',
+  'stereo-report': 'VRLibrary/性能·⑦ 立体与ASW·现状(只报告)',
+  'stereo-apply': 'VRLibrary/性能·⑦ 应用真机三件套(Multiview + 72Hz + 晚锁存)',
+  'asw-on': 'VRLibrary/性能·⑦ 开 ASW(前提:已 Multiview)',
+  'asw-off': 'VRLibrary/性能·⑦ 关 ASW',
+  'stereo-revert': 'VRLibrary/性能·⑦ 回退(回 MultiPass + Default + 关 ASW)',
+  apk: 'VRLibrary/打包PICO真机/② 一键打包APK',
+  'apk-install': 'VRLibrary/打包PICO真机/③ 安装APK并启动到真机',
+  'occ-report': 'VRLibrary/性能·⑧ 遮挡剔除·现状(只报告)',
+  'occ-bake': 'VRLibrary/性能·⑧ 标记并烘焙遮挡剔除(改场景,可能要几分钟)',
+  'occ-revert': 'VRLibrary/性能·⑧ 回退(清遮挡数据 + 去标记)',
 };
 
 const [short, timeoutSec = '900'] = process.argv.slice(2);
