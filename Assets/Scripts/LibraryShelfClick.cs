@@ -27,6 +27,10 @@ public class LibraryShelfClick : MonoBehaviour
     const float PlateDepth = 0.04f;     // 板厚
     const float OutwardGap = 0.02f;     // 板与书面的间隙
     const string PlateName = "ClickPlate";
+    /// <summary>点击板专用物理层。用户 2026-09-28 反馈"有空气墙挡路" —— 板是不可见的**实体碰撞体**,
+    /// 人物的 CharacterController 会撞上它。放到单独一层并**关掉它与 Default(人物所在层)的碰撞**,
+    /// 人物就能自由穿过;射线是"按遮罩打"、不吃碰撞矩阵,所以照样打得到。</summary>
+    const int PlateLayer = 3;
 
     /// <summary>每本书的"朝外方向"(由行质心算得)。冒烟测试要按**真实过道方向**验可达性,
     /// 而不是沿书自己的 forward —— 实测这两者不重合,照 forward 测会误报"被挡住"。</summary>
@@ -93,6 +97,18 @@ public class LibraryShelfClick : MonoBehaviour
     {
         var books = FindObjectsOfType<LibraryBook>(true);
         Outward.Clear(); Covered.Clear();
+
+        // 空气墙的两道处理:① 板放在专属层;② 关掉它与默认层的碰撞(人物就不会被挡)
+        Physics.IgnoreLayerCollision(PlateLayer, 0, true);
+        // 射线遮罩默认只含 Default/UI/31,要把新层加进去,否则射线打不到板
+        int patched = 0;
+        foreach (var ray in FindObjectsOfType<XRRayInteractor>(true))
+        {
+            // 传送射线不动:它的遮罩/交互层是 31,加了新层就会"隔着书架也能传送到板子上/被板子挡住传送"
+            if (ray.gameObject.name.ToLower().Contains("teleport")) continue;
+            if ((ray.raycastMask & (1 << PlateLayer)) == 0) { ray.raycastMask |= (1 << PlateLayer); patched++; }
+        }
+        Debug.Log("[ShelfClick] 点击板层=" + PlateLayer + ",已关闭与 Default 的碰撞;补进射线遮罩的交互器 " + patched + " 个");
         // 按父节点分行
         var rows = new Dictionary<Transform, List<LibraryBook>>();
         foreach (var b in books)
@@ -135,7 +151,7 @@ public class LibraryShelfClick : MonoBehaviour
             foreach (var s in sides)
             {
                 var plate = new GameObject(PlateName);
-                plate.layer = row[0].gameObject.layer;
+                plate.layer = PlateLayer;
                 plate.transform.SetParent(parent, true);
                 plate.transform.SetPositionAndRotation(center + s.dir * (s.ext + 0.05f),
                     Quaternion.LookRotation(s.dir, Vector3.up));

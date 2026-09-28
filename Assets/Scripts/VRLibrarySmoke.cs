@@ -290,6 +290,25 @@ public class VRLibrarySmoke : MonoBehaviour
         Check("射线能打到书(书架不挡)", sampled > 0 && reachable == sampled,
             "全场 " + scanned + " 本,抽样 " + sampled + " 本 → 可点中 " + reachable + " 本(精确命中本身 " + precise + " 本)"
             + (blockers.Count > 0 ? " · 反例:" + string.Join(" | ", blockers) : " · 全通"));
+
+        // 用户真正的那一环:**选中点击板 → 会不会开书**(2026-09-28 用户报"还是点不开")
+        var plate = FindObjectOfType<LibraryShelfClick.Plate>();
+        bool plateOpened = false; string plateWhy;
+        if (plate == null) plateWhy = "场上没有点击板(LibraryShelfClick 没生效?)";
+        else if (mgr == null || ray == null) plateWhy = "缺少 InteractionManager 或射线";
+        else
+        {
+            var pi = plate.GetComponent<UnityEngine.XR.Interaction.Toolkit.XRBaseInteractable>();
+            r.Close();
+            bool can = pi != null && ray.CanSelect(pi);
+            if (pi != null) mgr.SelectEnter(ray, pi);
+            plateOpened = r.panelRoot.activeSelf;
+            if (pi != null) mgr.SelectExit(ray, pi);
+            r.Close();
+            plateWhy = "板=" + plate.name + " 层=" + plate.gameObject.layer + " 可选中=" + can
+                + " 行内书=" + (plate.row == null ? 0 : plate.row.Count) + " → 面板=" + plateOpened;
+        }
+        Check("点击板能开书(用户报点不开的那一环)", plateOpened, plateWhy);
     }
 
     IEnumerator TestSearchAndTeleport()
