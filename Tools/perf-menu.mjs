@@ -39,6 +39,10 @@ const MENUS = {
   'occ-revert': 'VRLibrary/性能·⑧ 回退(清遮挡数据 + 去标记)',
   'bookclick': 'VRLibrary/性能·⑨ 书本改成点击阅读(去抓取 + 去刚体,改场景)',
   'bookclick-verify': 'VRLibrary/性能·⑨ 复核(只报告)',
+  'turn-report': 'VRLibrary/体验·⑩ 现状(只报告)',
+  'turn-apply': 'VRLibrary/体验·⑩ 转头改成按住持续转 + 力度调速(改场景)',
+  'vignette-half': 'VRLibrary/体验·⑩ 防眩晕环强度减半(改场景)',
+  'turn-revert': 'VRLibrary/体验·⑩ 回退(恢复 Snap 转头 + 环还原)',
 };
 
 const [short, timeoutSec = '900'] = process.argv.slice(2);
