@@ -258,57 +258,179 @@ public class VRLibrarySmoke : MonoBehaviour
         // 射线**打得中**吗:对抽样书各自"站到书正前方 1.2m"打一条射线,看第一阻挡是谁。
         // 抓取走的是手碰碰撞体(overlap),点击要靠射线 —— 书架的前沿/挡板完全可能挡在书前面,
         // 这就是"以前能抓、现在点不开"的最可能原因。(上一次从相机正前方打,目标在 19.2m 外,测的是射程不是遮挡)
-        int scanned = 0, sampled = 0, reachable = 0, precise = 0; var blockers = new List<string>();
+        int scanned = 0, sampled = 0, reachable = 0; var blockers = new List<string>();
         foreach (var b in FindObjectsOfType<LibraryBook>())
         {
             if (b.GetComponent<Collider>() == null) continue;
             if (scanned % 12 != 0) { scanned++; continue; }   // 抽样:每 12 本取 1 本
             scanned++; sampled++;
             var p = b.transform.position;
-            // 从 4 个水平方向各试一次(点击板贴在整行包围盒的 4 个侧面上,过道在哪个方向都能打到)
-            // 门禁 = "射线不再被书架吃掉、点下去能开某本书";另外单独报"是否精确开的就是抽样那一本"(参考量)
-            bool ok = false, exact = false; string block = "";
+            // 从 4 个水平方向各试一次。**判据就是用户那句话:射线碰到书就该算数** ——
+            // 命中物必须是这本书自己(书架结构已被挪到射线遮罩之外的层,不该再挡路)。
+            bool ok = false; string block = "";
             foreach (var d in new[] { Vector3.right, Vector3.left, Vector3.forward, Vector3.back })
             {
                 var origin = p + d * 1.5f;
                 RaycastHit h;
                 bool hit = Physics.Raycast(origin, (p - origin).normalized, out h, 3.5f, ~0, QueryTriggerInteraction.Ignore);
                 if (!hit) { if (block.Length == 0) block = "打空"; continue; }
-                if (h.collider.GetComponentInParent<LibraryBook>() == b) { ok = true; exact = true; break; }
-                var pl = h.collider.GetComponent<LibraryShelfClick.Plate>();
-                if (pl != null)
-                {
-                    ok = true;
-                    if (pl.Nearest(h.point) == b) exact = true;
-                    break;
-                }
+                if (h.collider.GetComponentInParent<LibraryBook>() == b) { ok = true; break; }
                 if (block.Length == 0) block = h.collider.name + "@" + h.distance.ToString("0.00") + "m";
             }
-            if (ok) { reachable++; if (exact) precise++; }
+            if (ok) reachable++;
             else if (blockers.Count < 4) blockers.Add("《" + b.title + "》被 " + block + " 挡住");
         }
         Check("射线能打到书(书架不挡)", sampled > 0 && reachable == sampled,
-            "全场 " + scanned + " 本,抽样 " + sampled + " 本 → 可点中 " + reachable + " 本(精确命中本身 " + precise + " 本)"
+            "全场 " + scanned + " 本,抽样 " + sampled + " 本 → 射线直达 " + reachable + " 本"
             + (blockers.Count > 0 ? " · 反例:" + string.Join(" | ", blockers) : " · 全通"));
 
-        // 用户真正的那一环:**选中点击板 → 会不会开书**(2026-09-28 用户报"还是点不开")
-        var plate = FindObjectOfType<LibraryShelfClick.Plate>();
-        bool plateOpened = false; string plateWhy;
-        if (plate == null) plateWhy = "场上没有点击板(LibraryShelfClick 没生效?)";
-        else if (mgr == null || ray == null) plateWhy = "缺少 InteractionManager 或射线";
+        // 空气墙自证:上一版我加的隐形点击板(层 3 的实体碰撞体)必须一个都不剩 ——
+        // 用户 2026-09-28 报"被空气墙挡住",根因就是它。
+        int ghost = 0;
+        foreach (var c in FindObjectsOfType<Collider>())
+            if (c.gameObject.layer == 3) ghost++;
+        Check("没有隐形空气墙(层 3 无碰撞体)", ghost == 0, "场上 layer 3 的碰撞体 " + ghost + " 个(应为 0)");
+
+        // 用户真正的那一环:**书自己的碰撞体被选中 → 会不会开书**
+        var sampleBook = FindObjectsOfType<LibraryBook>()[0];
+        bool bookOpened = false; string bookWhy;
+        var bi = sampleBook.GetComponent<UnityEngine.XR.Interaction.Toolkit.XRBaseInteractable>();
+        if (mgr == null || ray == null || bi == null) bookWhy = "缺少 InteractionManager/射线/书上的可交互组件";
         else
         {
-            var pi = plate.GetComponent<UnityEngine.XR.Interaction.Toolkit.XRBaseInteractable>();
             r.Close();
-            bool can = pi != null && ray.CanSelect(pi);
-            if (pi != null) mgr.SelectEnter(ray, pi);
-            plateOpened = r.panelRoot.activeSelf;
-            if (pi != null) mgr.SelectExit(ray, pi);
+            bool can = ray.CanSelect(bi);
+            mgr.SelectEnter(ray, bi);
+            bookOpened = r.panelRoot.activeSelf;
+            mgr.SelectExit(ray, bi);
             r.Close();
-            plateWhy = "板=" + plate.name + " 层=" + plate.gameObject.layer + " 可选中=" + can
-                + " 行内书=" + (plate.row == null ? 0 : plate.row.Count) + " → 面板=" + plateOpened;
+            bookWhy = "《" + sampleBook.title + "》层=" + sampleBook.gameObject.layer
+                + " 可选中=" + can + " → 面板=" + bookOpened;
         }
-        Check("点击板能开书(用户报点不开的那一环)", plateOpened, plateWhy);
+        Check("书自身可点开(射线碰到书就开)", bookOpened, bookWhy);
+
+        // 2026-09-29 用户报"书签占住了上一页的效果,没有办法回到上一页,全流程卡住"。
+        // 就地量出来的真相:底排的 `Btn_Bookmark` 与 `Btn_Prev` 锚点/位置/尺寸**逐像素相同**
+        // (都是 anchor 0.06→0.3、pos(0,39)、158.4×50),而书签键在层级里排在上一页键**之后**
+        // ⇒ uGUI 后画的先吃射线,点"上一页"永远落在书签键上。
+        // 这类"布局撞车"光比坐标容易看漏(两个键各自都合法),所以这里不认死值:
+        // **借 EventSystem 真打一枪 UI 射线,看点下去到底落到谁头上** —— 也顺手截一张玩家视角的图。
+        r.Open(sampleBook);
+        yield return null;                    // 让 BookReader.Update 把面板摆到眼前
+        yield return null;
+        string layWhy; bool layOk = ProbeReaderRow(r, out layWhy);
+        var shotPath = Abs("Captures/reader-layout.png");                     // 玩家眼里的阅读面板
+        Directory.CreateDirectory(Path.GetDirectoryName(shotPath));
+        ScreenCapture.CaptureScreenshot(shotPath);
+        yield return new WaitForSeconds(0.4f);
+        Check("阅读面板按钮互不遮挡(上一页点得到)", layOk, layWhy);
+        r.Close();
+    }
+
+    /// <summary>
+    /// 认一个按钮:它的持久回调打到 `BookReader.<method>`。走公开的 UnityEvent 反射口,
+    /// 不依赖 UnityEditor(冒烟是运行时组件),名字改了也不会认错。
+    /// </summary>
+    static Button BtnByMethod(BookReader r, string method)
+    {
+        foreach (var b in r.GetComponentsInChildren<Button>(true))
+        {
+            var e = b.onClick;
+            for (int i = 0; i < e.GetPersistentEventCount(); i++)
+                if (e.GetPersistentTarget(i) == (UnityEngine.Object)r && e.GetPersistentMethodName(i) == method)
+                    return b;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 面板直接子级里"会吃射线的图形"的本地矩形(锚点反算,和编辑器菜单同一套算法)。
+    /// </summary>
+    static Rect LocalRect(RectTransform rt)
+    {
+        var p = rt.parent as RectTransform;
+        if (p == null) return rt.rect;
+        Rect pr = p.rect;
+        float ax = pr.xMin + rt.anchorMin.x * pr.width;
+        float ay = pr.yMin + rt.anchorMin.y * pr.height;
+        float bx = pr.xMin + rt.anchorMax.x * pr.width;
+        float by = pr.yMin + rt.anchorMax.y * pr.height;
+        float w = (bx - ax) + rt.sizeDelta.x;
+        float h = (by - ay) + rt.sizeDelta.y;
+        float cx = ax + rt.pivot.x * (bx - ax) + rt.anchoredPosition.x;
+        float cy = ay + rt.pivot.y * (by - ay) + rt.anchoredPosition.y;
+        return new Rect(cx - rt.pivot.x * w, cy - rt.pivot.y * h, w, h);
+    }
+
+    /// <summary>这个对象(或它的子级)有没有"会吃射线的图形"。</summary>
+    static bool EatsRay(RectTransform rt)
+    {
+        foreach (var g in rt.GetComponentsInChildren<Graphic>(true))
+            if (g.raycastTarget) return true;
+        return rt.GetComponent<Button>() != null;
+    }
+
+    /// <summary>
+    /// 底排三个可点键"点下去落到谁头上"。
+    ///
+    /// ⚠ 这里**故意不用 `EventSystem.RaycastAll` + `WorldToScreenPoint`**:2026-09-29 实测它在本工程
+    /// 会给出错误结论 —— PICO 的 XR 眼睛投影矩阵是**非对称**的,`Camera.main.WorldToScreenPoint`
+    /// 与真正渲染用的投影差着一个垂直平移,底排三个键整体被算高约 46px(截图比对),于是三条射线
+    /// 全打空。错的是测量,不是布局。所以改成量**同一块画布内的几何 + 绘制次序**:
+    ///   uGUI 的命中规则就是"同一画布里**后画的先中**",所以只要某个更晚绘制、且会吃射线的兄弟
+    ///   盖住了这个键的中心,这个键就点不到。原事故(书签键与上一页键矩形逐像素重合、且排在后面)
+    ///   被这条判据一击命中。
+    /// </summary>
+    static bool ProbeReaderRow(BookReader r, out string why)
+    {
+        var panel = (r.panelRoot != null ? r.panelRoot : r.gameObject).GetComponent<RectTransform>();
+        if (panel == null) { why = "找不到面板 RectTransform"; return false; }
+
+        var prev = BtnByMethod(r, "PrevPage");
+        var next = BtnByMethod(r, "NextPage");
+        var bmk = r.bookmarkBtn;
+        if (prev == null || next == null || bmk == null)
+        {
+            why = "底排键认不齐(上一页=" + (prev != null) + " 书签=" + (bmk != null) + " 下一页=" + (next != null) + ")";
+            return false;
+        }
+
+        // 面板直接子级里会吃射线的那些,按层级次序(次序 = 绘制次序 = 命中优先级)
+        var blockers = new List<RectTransform>();
+        for (int i = 0; i < panel.childCount; i++)
+        {
+            var c = panel.GetChild(i) as RectTransform;
+            if (c == null || !c.gameObject.activeInHierarchy) continue;
+            if (EatsRay(c)) blockers.Add(c);
+        }
+
+        var btns = new List<Button> { prev, bmk, next };
+        var names = new List<string> { "上一页", "书签", "下一页" };
+        var sb = new StringBuilder();
+        int okCount = 0;
+        for (int i = 0; i < btns.Count; i++)
+        {
+            var rt = btns[i].GetComponent<RectTransform>();
+            var mine = LocalRect(rt);
+            var c0 = new Vector2(mine.center.x, mine.center.y);
+            string cover = "";
+            int myIdx = blockers.IndexOf(rt);
+            for (int j = 0; j < blockers.Count; j++)
+            {
+                if (blockers[j] == rt) continue;
+                if (myIdx >= 0 && j < myIdx) continue;                  // 更早画的被它盖住,不算它被盖
+                if (LocalRect(blockers[j]).Contains(c0)) { cover = blockers[j].name; break; }
+            }
+            bool self = cover.Length == 0;
+            if (self) okCount++;
+            sb.Append(names[i] + "(" + rt.name + " 矩形 x" + mine.xMin.ToString("0") + "–" + mine.xMax.ToString("0")
+                      + " y" + mine.yMin.ToString("0") + "–" + mine.yMax.ToString("0") + ")"
+                      + (self ? " ✓ 没被盖" : " ✗ 中心被「" + cover + "」盖住"));
+            if (i < btns.Count - 1) sb.Append(" · ");
+        }
+        sb.Append("  [同一画布内后画的先中,判据就是这一条]");
+        why = sb.ToString();
+        return okCount == btns.Count;
     }
 
     IEnumerator TestSearchAndTeleport()

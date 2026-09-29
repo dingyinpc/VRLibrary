@@ -54,14 +54,55 @@ public static class VRLibraryClickDiag
                     + "  maxDistance=" + ray.maxRaycastDistance + "  lineType=" + ray.lineType);
             if (baseCtrl != null)
             {
+                // 不再猜字段名:把名字里带 action/select/activate 的序列化属性全列出来(含它的引用指向谁)
                 var so = new SerializedObject(baseCtrl);
-                foreach (var n in new[] { "m_SelectAction", "m_ActivateAction", "m_SelectActionTrigger", "m_AllowHoveredActivate", "m_EnableUIInteraction" })
+                var iter = so.GetIterator();
+                while (iter.NextVisible(true))
                 {
-                    var p = so.FindProperty(n);
-                    if (p == null) { sb.AppendLine("      " + n + " 找不到"); continue; }
+                    var p = iter.Copy();
+                    var pn = p.name.ToLower();
+                    if (!(pn.Contains("action") || pn.Contains("select") || pn.Contains("activate") || pn.Contains("hover"))) continue;
+                    string extra = "";
                     var r = p.FindPropertyRelative("m_Reference");
-                    sb.AppendLine("      " + n + " = " + (r != null && r.objectReferenceValue != null ? r.objectReferenceValue.name : "(空)"));
+                    if (r != null) extra = " → m_Reference=" + (r.objectReferenceValue == null ? "(空)" : r.objectReferenceValue.name);
+                    else
+                    {
+                        var act = p.FindPropertyRelative("m_Action");
+                        if (act != null)
+                        {
+                            var map = act.FindPropertyRelative("m_ActionMap");
+                            var nm = act.FindPropertyRelative("m_Name");
+                            extra = " → 直接 InputAction(name=" + (nm == null ? "?" : nm.stringValue)
+                                + ", map=" + (map == null || map.objectReferenceValue == null ? "空" : map.objectReferenceValue.name) + ")";
+                        }
+                    }
+                    sb.AppendLine("      " + p.name + " [" + p.propertyType + "]" + extra);
                 }
+            }
+        }
+
+        // ---- 控制器:XRI 2.x 的输入动作真正挂在这里(交互器只是听它的状态)
+        // ⚠ 我前面一直在交互器上找 m_SelectAction,所以永远"找不到" —— 那些字段在 ActionBasedController 上。
+        sb.AppendLine("\n控制器(输入动作真正挂在这里):");
+        foreach (var c in UnityEngine.Object.FindObjectsOfType<XRBaseController>(true))
+        {
+            sb.AppendLine("  " + c.GetType().Name + " [" + c.gameObject.name + "] enabled=" + c.enabled
+                + " active=" + c.gameObject.activeInHierarchy);
+            var cso = new SerializedObject(c);
+            var cit = cso.GetIterator();
+            while (cit.NextVisible(true))
+            {
+                var p = cit.Copy();
+                if (!p.name.ToLower().Contains("action")) continue;
+                var r = p.FindPropertyRelative("m_Reference");
+                string val;
+                if (r != null) val = r.objectReferenceValue == null ? "**(空!按了也没用)**" : r.objectReferenceValue.name;
+                else
+                {
+                    var nm = p.FindPropertyRelative("m_Name");
+                    val = "(直接 InputAction) name=" + (nm == null ? "?" : nm.stringValue);
+                }
+                sb.AppendLine("      " + p.name + " = " + val);
             }
         }
 

@@ -40,17 +40,52 @@ public class LibraryBook : MonoBehaviour
             return;
         }
         interactable.selectEntered.AddListener(OnSelectEntered);
+        // ⚠ 2026-09-28 用户报"射线能选中但打不开":手柄的扳机在不同映射下走的是 **Activate** 而不是 Select,
+        // 只绑 selectEntered 就会"看着选中了、却没有任何反应"。两个都接上,并且各打一行日志,
+        // 这样按一下就能在 Console 里看出到底触发的是哪一个。
+        interactable.activated.AddListener(OnActivated);
+        interactable.hoverEntered.AddListener(OnHoverEntered);
     }
 
     void OnDisable()
     {
         if (interactable == null) return;
         interactable.selectEntered.RemoveListener(OnSelectEntered);
+        interactable.activated.RemoveListener(OnActivated);
+        interactable.hoverEntered.RemoveListener(OnHoverEntered);
     }
 
-    /// <summary>点一下 = 看这本书。</summary>
+    static string Who(IXRInteractor i)
+    {
+        var c = i as Component;
+        return c == null ? (i == null ? "?" : i.ToString()) : c.gameObject.name;
+    }
+
+    private void OnHoverEntered(HoverEnterEventArgs args)
+    {
+        Debug.Log("[Book] 悬停 ← " + Who(args.interactorObject) + " 《" + title + "》");
+    }
+
+    /// <summary>点一下 = 看这本书(走 Select)。</summary>
     private void OnSelectEntered(SelectEnterEventArgs args)
     {
+        Debug.Log("[Book] 选中(select) ← " + Who(args.interactorObject) + " 《" + title + "》→ 开书");
+        OpenFrom();
+    }
+
+    /// <summary>扳机若映射到 Activate,这里同样开书(与 Select 二选一,靠去重保证不会开两次)。</summary>
+    private void OnActivated(ActivateEventArgs args)
+    {
+        Debug.Log("[Book] 触发(activate) ← " + Who(args.interactorObject) + " 《" + title + "》→ 开书");
+        OpenFrom();
+    }
+
+    float lastOpen = -1f;
+
+    private void OpenFrom()
+    {
+        if (Time.unscaledTime - lastOpen < 0.3f) return;      // 两个事件可能同时来,去重
+        lastOpen = Time.unscaledTime;
         if (LibraryUIController.Instance != null)
             LibraryUIController.Instance.ShowBookInfo(this);
         OpenReader();
