@@ -27583,7 +27583,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   origin: {fileID: 1186157143}
   destination: {fileID: 682980008}
-  keepRigHeight: 1
+  keepRigHeight: 0
 --- !u!1 &196650425
 GameObject:
   m_ObjectHideFlags: 0
@@ -68006,7 +68006,7 @@ Transform:
   m_GameObject: {fileID: 520314247}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.7071068, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: 18.2, y: 3.045, z: -10.5}
+  m_LocalPosition: {x: 18.2, y: 4.47, z: -10.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -90758,7 +90758,7 @@ Transform:
   m_GameObject: {fileID: 682980007}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 0.95371693, z: -0, w: 0.30070582}
-  m_LocalPosition: {x: 24, y: 3.045, z: -24}
+  m_LocalPosition: {x: 24, y: 4.47, z: -24}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -142877,7 +142877,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   origin: {fileID: 1186157143}
   destination: {fileID: 219616808}
-  keepRigHeight: 1
+  keepRigHeight: 0
 --- !u!114 &1067700109
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -183813,6 +183813,8 @@ MonoBehaviour:
   - {fileID: 480800130}
   distance: 1.55
   heightOffset: -0.45
+  missMargin: 0.08
+  openGrace: 0.35
 --- !u!114 &1357000330
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -265249,7 +265251,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   origin: {fileID: 1186157143}
   destination: {fileID: 520314248}
-  keepRigHeight: 1
+  keepRigHeight: 0
 --- !u!114 &1943157654
 MonoBehaviour:
   m_ObjectHideFlags: 0
