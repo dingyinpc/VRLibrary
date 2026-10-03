@@ -41,7 +41,13 @@ public class LibraryUIController : MonoBehaviour
 
     public void ShowBookInfo(LibraryBook book)
     {
-        Show($"《{book.title}》\n作者:{book.author}\n{book.summary}");
+        // 状态栏只有两三行的高度:方案书的 summary 是整篇 md(几千字),整段灌进来会把导览屏
+        // 撑成一团叠字(2026-10-03 实测"关书回到入口面板,字全串起来")。这里只放书目信息
+        // 和 60 字摘要,正文交给阅读面板显示。
+        string brief = (book.summary ?? "").Replace("\r", "").Replace("\n", " ").Trim();
+        if (brief.Length > 60) brief = brief.Substring(0, 60) + "…";
+        string slot = string.IsNullOrEmpty(book.slotCode) ? "" : " [" + book.slotCode + "]";
+        Show($"《{book.title}》{slot}\n作者:{book.author}\n{brief}");
     }
 
     public void Show(string message)
