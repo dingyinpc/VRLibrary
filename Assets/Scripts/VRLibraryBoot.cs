@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.XR;
+using UnityEngine.XR.Interaction.Toolkit;
 
 // 真机上跑到的画质档位不一定等于编辑器当前档,凡是影响清晰度的参数都在这里钉死,
 // 并且让设备把"实际拿到的眼缓冲"报出来 —— 没有这行日志就只能靠猜真机为什么糊。
@@ -28,9 +29,37 @@ public class VRLibraryBoot : MonoBehaviour
         EnableFfr();
         ApplyTargetFrameRate();
         Debug.Log("[VRLibrary] 清晰度自检(建场景后) " + Snapshot());
-        if (Application.isEditor) yield break;      // 编辑器没有 XR 显示,再等也不会有眼缓冲数值
+#if UNITY_EDITOR
+        yield return RecoverLineVisuals();          // 仅编辑器:治 XR Device Simulator 的激活时序毛刺
+        yield break;                                // 编辑器没有 XR 显示,再等也不会有眼缓冲数值
+#else
         yield return new WaitForSecondsRealtime(1.5f);
         Debug.Log("[VRLibrary] 清晰度自检(1.5s 后) " + Snapshot());
+#endif
+    }
+
+    /// <summary>
+    /// 编辑器专用:XR Device Simulator 在原生输入回调里加虚拟设备/切 UI 悬停,会把部分手柄组件
+    /// 带进"OnEnable 先于 Awake"的异常窗口 —— XRInteractorLineVisual 在这种窗口里量不到
+    /// ILineRenderable,直接 enabled=false 自杀,这支手柄的激光线整局消失。这里在开场 2 秒后
+    /// 把这类误杀的线视觉重新拉起来(此时 Awake 早已补跑完,OnEnable 能正常走通)。
+    /// 真机没有模拟器,不存在此问题,不参与构建。
+    /// </summary>
+    IEnumerator RecoverLineVisuals()
+    {
+        yield return new WaitForSecondsRealtime(2f);
+        int fixedCount = 0;
+        var visuals = FindObjectsOfType<XRInteractorLineVisual>(true);
+        foreach (var lv in visuals)
+        {
+            if (lv.enabled) continue;
+            var ray = lv.GetComponent<XRBaseInteractor>();
+            if (ray == null || !ray.isActiveAndEnabled) continue;
+            lv.enabled = true;                       // 重走 OnEnable:此时 Awake 已完成,不会再自杀
+            fixedCount++;
+        }
+        if (fixedCount > 0)
+            Debug.LogWarning("[VRLibrary] 补活被模拟器时序误杀的线视觉 " + fixedCount + " 个(仅编辑器)");
     }
 
     // ------------------------------------------------------------ 帧率目标(与 ASW 联动)

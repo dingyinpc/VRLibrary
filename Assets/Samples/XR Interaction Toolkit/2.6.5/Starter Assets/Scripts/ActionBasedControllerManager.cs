@@ -331,6 +331,11 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
             // Start the coroutine that executes code after the Update phase (during yield null).
             // Since this behavior has an execution order that runs before the XRInteractionManager,
             // we use the coroutine to run after the selection events
+            // 本地补丁:XR Device Simulator 在输入回调里加入虚拟设备时,本组件的 OnEnable 可能先于
+            // Awake 执行 → m_AfterInteractionEventsRoutine 还是 null,StartCoroutine(null) 抛
+            // "NullReferenceException: routine is null"。懒初始化兜底,行为不变。
+            if (m_AfterInteractionEventsRoutine == null)
+                m_AfterInteractionEventsRoutine = OnAfterInteractionEvents();
             StartCoroutine(m_AfterInteractionEventsRoutine);
         }
 
@@ -338,7 +343,8 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
         {
             TeardownInteractorEvents();
 
-            StopCoroutine(m_AfterInteractionEventsRoutine);
+            if (m_AfterInteractionEventsRoutine != null)
+                StopCoroutine(m_AfterInteractionEventsRoutine);
         }
 
         protected void Start()

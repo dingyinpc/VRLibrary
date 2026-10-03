@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Unity.XR.CoreUtils;
@@ -408,7 +409,19 @@ public class TerraceCinema : MonoBehaviour
         return 0f;
     }
 
-    static void SetActive(GameObject go, bool on) { if (go != null && go.activeSelf != on) go.SetActive(on); }
+    static void SetActive(GameObject go, bool on)
+    {
+        if (go == null || go.activeSelf == on) return;
+        try { go.SetActive(on); }
+        catch (KeyNotFoundException e)
+        {
+            // XR Device Simulator 在输入回调里换设备/切 UI 悬停时,面板画布的 TrackedDeviceGraphicRaycaster
+            // 可能在"注册表还没建好"的窗口期被关掉 → 包内 OnDisable 弹 KeyNotFoundException 并沿
+            // SetActive 一路抛上来,谁调谁死(冒烟测试的运行协程就是这么被杀的)。这种一次性时序毛刺
+            // 无害,吞掉;正常注册路径不受影响。
+            Debug.LogWarning("[Cinema] 面板 " + go.name + " 开合撞上射线注册毛刺(已忽略): " + e.Message);
+        }
+    }
 
     /// <summary>供冒烟测试用:当前目录里有几条、现在选了第几条、四块面板当前显不显示。</summary>
     public int FilmCount { get { return TerraceScreen.Films == null ? 0 : TerraceScreen.Films.Length; } }
