@@ -1,7 +1,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.XR.Interaction.Toolkit;
 
 /// <summary>
 /// 智能图书馆 · 阅读面板(含书签系统)
@@ -26,6 +28,16 @@ public class BookReader : MonoBehaviour
 
     public float distance = 1.55f;
     public float heightOffset = -0.45f;
+
+    [Header("指外即关(面板开着时,指针不在面板上点一下 = 关书)")]
+    public float missMargin = 0.08f;   // 面板矩形边缘的判定余量(米),防"贴边点按钮被判成点外面"
+    public float openGrace = 0.35f;    // 开书保护期(秒):开书那一下扳机本来就按着,不算点外面
+
+    readonly List<XRBaseController> missCtrls = new List<XRBaseController>();
+    readonly List<bool> missHeld = new List<bool>();
+    readonly List<XRRayInteractor> missRays = new List<XRRayInteractor>();
+    RectTransform panelRT;
+    float lastOpenTime = -99f;
 
     public class Bookmark
     {
@@ -86,6 +98,7 @@ public class BookReader : MonoBehaviour
         Instance = this;
         LoadBookmarks();
         if (panelRoot == null) panelRoot = gameObject;
+        panelRT = panelRoot.transform as RectTransform;
         panelRoot.SetActive(false);
         if (bookmarkBtn != null)
             bookmarkBtn.onClick.AddListener(ToggleBookmarkList);
@@ -110,6 +123,9 @@ public class BookReader : MonoBehaviour
         PositionInFront();
         Refresh(false);
         UpdateBookmarkButton();
+        // 指外即关:重记基线(此刻扳机多半还按着)与保护期
+        lastOpenTime = Time.unscaledTime;
+        CollectMissWiring();
     }
 
     public void NextPage() { if (page < pages.Length - 1) { page++; Refresh(true); } }
@@ -226,6 +242,92 @@ public class BookReader : MonoBehaviour
                 transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 6f);
             }
         }
+        PollMissClose();
+    }
+
+    // ------------------------------------------------ 指外即关
+
+    void CollectMissWiring()
+    {
+        missCtrls.Clear(); missHeld.Clear(); missRays.Clear();
+        foreach (var c in FindObjectsOfType<XRBaseController>())
+        {
+            missCtrls.Add(c);
+            missHeld.Add(c.selectInteractionState.active);   // 预热基线:开书瞬间按住的扳机不算点击
+        }
+        foreach (var r in FindObjectsOfType<XRRayInteractor>())
+            if (r != null && r.isActiveAndEnabled) missRays.Add(r);
+    }
+
+    void PollMissClose()
+    {
+        if (panelRoot == null || !panelRoot.activeSelf || missCtrls.Count == 0) return;
+        for (int i = 0; i < missCtrls.Count; i++)
+        {
+            var c = missCtrls[i];
+            bool held = c != null && c.selectInteractionState.active;
+            bool pressed = held && !missHeld[i];
+            missHeld[i] = held;
+            if (!pressed) continue;
+            if (Time.unscaledTime - lastOpenTime < openGrace) continue;   // 开书那一下不算
+
+            var ray = FindRayFor(c);
+            if (ray == null) continue;   // 该手没有射线交互器,不管
+            if (ShouldCloseForRay(ray)) { Close(); return; }
+        }
+    }
+
+    /// <summary>这条射线当前指着的落点上"点一下"是否意味着"关书":没打中任何东西,或打中的既不是阅读面板也不是另一本书。</summary>
+    public bool ShouldCloseForRay(XRRayInteractor ray)
+    {
+        if (ray == null) return false;
+        Vector3 pos; GameObject obj;
+        if (!TryGetHit(ray, out pos, out obj)) return true;                              // 指着空处点 → 关
+        if (obj != null && panelRT != null && obj.transform.IsChildOf(panelRT)) return false;   // 点在面板/面板按钮上
+        if (panelRT != null && InPanelRect(pos)) return false;                            // 点在面板表面
+        if (obj != null && obj.GetComponentInParent<LibraryBook>() != null) return false; // 点另一本书 → 让它换书,不关
+        return true;
+    }
+
+    XRRayInteractor FindRayFor(XRBaseController c)
+    {
+        for (int i = 0; i < missRays.Count; i++)
+        {
+            var r = missRays[i];
+            if (r != null && r.isActiveAndEnabled && r.xrController == c) return r;
+        }
+        return null;
+    }
+
+    /// <summary>当前帧这条射线打中了什么:UI 优先(面板按钮都是 UI),其次 3D 碰撞体,最后射线端点。</summary>
+    bool TryGetHit(XRRayInteractor r, out Vector3 pos, out GameObject obj)
+    {
+        pos = default(Vector3); obj = null;
+        RaycastResult ui;
+        if (r.TryGetCurrentUIRaycastResult(out ui) && ui.gameObject != null)
+        {
+            pos = ui.worldPosition; obj = ui.gameObject; return true;
+        }
+        RaycastHit rh;
+        if (r.TryGetCurrent3DRaycastHit(out rh) && rh.collider != null)
+        {
+            pos = rh.point; obj = rh.collider.gameObject; return true;
+        }
+        Vector3 nrm; int idx; bool valid;
+        if (r.TryGetHitInfo(out pos, out nrm, out idx, out valid) && valid) return true;
+        return false;
+    }
+
+    /// <summary>世界坐标是否落在阅读面板矩形内(按画布单位算,边缘留 missMargin 换算余量)。</summary>
+    bool InPanelRect(Vector3 worldPos)
+    {
+        if (panelRT == null) return false;
+        var local = panelRT.InverseTransformPoint(worldPos);
+        var center = new Vector2((0.5f - panelRT.pivot.x) * panelRT.rect.width, (0.5f - panelRT.pivot.y) * panelRT.rect.height);
+        float marginU = missMargin / Mathf.Max(1e-5f, Mathf.Abs(panelRT.lossyScale.x));
+        return Mathf.Abs(local.x - center.x) <= panelRT.rect.width * 0.5f + marginU
+            && Mathf.Abs(local.y - center.y) <= panelRT.rect.height * 0.5f + marginU
+            && Mathf.Abs(local.z) <= 0.6f / Mathf.Max(1e-5f, Mathf.Abs(panelRT.lossyScale.z));
     }
 
     void PositionInFront()

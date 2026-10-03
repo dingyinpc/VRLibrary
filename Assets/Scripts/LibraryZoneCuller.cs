@@ -129,6 +129,7 @@ public class LibraryZoneCuller : MonoBehaviour
 
     void Evaluate(bool first)
     {
+        if (zones.Count == 0) return;   // Start 尚未完成时 Update 直接跳过,别在 zones[0] 上越界刷异常(会触发 Error Pause 冻住整轮测试)
         if (cam == null) cam = Camera.main;
         if (cam == null) return;
         Vector3 p = cam.transform.position;
