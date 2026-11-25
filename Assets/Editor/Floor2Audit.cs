@@ -14,11 +14,11 @@ using UnityEngine;
 ///   ③ 板与板搭接没有(缝 > 阈值 = 走过去踩空);
 ///   ④ 把 AirWalls、所有传送锚点的碰撞体、楼梯上口摊开列出来
 ///      —— 隐形墙和实心传送垫是两类最典型的"看不见但堵路"。
-/// 判据:板面顶 y=3.005(实测,见 VRLibraryAnchors2F 注释);顶面高出板面 0.35 m 以上才算挡
+/// 判据:板面顶 y 从场上 Pad_2F_* 锚点反推(不再写死);顶面高出板面 0.35 m 以上才算挡
 /// (压条跨得过去);断面量在板面上方 1.10 m(胸口),人按 ±0.35 m 宽算。
 /// 前两版踩过的坑(别再犯):把 0.1 m 宽的边灯 MezzGlow_* 当成地板;把地板自己/外墙/栏杆当障碍,
 /// 于是九块板全报"净宽 0.00 m"。**墙与栏杆是走道的边界,不是障碍** —— 所以判据是"断面上有没有
-/// 一条过得去的空档",不是"最窄处多宽"。
+/// 一条过得去的空口",不是"最窄处多宽"。
 /// 报告写 Logs/floor2-audit.txt。
 /// </summary>
 public static class Floor2Audit
@@ -26,7 +26,26 @@ public static class Floor2Audit
     const string kScene = "Assets/_Scenes/SmartLibrary.unity";
     const string kLog = "Logs/floor2-audit.txt";
 
-    const float DeckTop = 3.005f;
+    /// <summary>二层板面顶兜底值(拔高 4.423 之后)。平时由场上锚点反推。</summary>
+    const float DeckTopFallback = 4.423f;
+
+    static float _deckTop = -1f;
+
+    /// <summary>二层板面顶:由 Pad_2F_N_E 反推(锚点 = 板面 + 0.045),找不到才用兜底。</summary>
+    static float DeckTop
+    {
+        get
+        {
+            if (_deckTop > 0f) return _deckTop;
+            var a2f = GameObject.Find("SmartLibrary/Pad_2F_N_E");
+            if (a2f == null) a2f = GameObject.Find("Pad_2F_N_E");
+            if (a2f != null) { _deckTop = a2f.transform.position.y - 0.045f; return _deckTop; }
+            Debug.LogWarning("[Floor2Audit] 找不到二层锚点,回退兜底 DeckTop=" + DeckTopFallback);
+            _deckTop = DeckTopFallback;
+            return _deckTop;
+        }
+    }
+
     const float Knee = 0.35f;
     const float Chest = 1.10f;
     const float Head = 1.65f;

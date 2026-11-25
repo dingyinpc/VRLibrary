@@ -30,7 +30,7 @@ public static class VRLibraryStereoAsw
     const string ReportPath = "Logs/perf-stereo.txt";
 
     // PICO 枚举:StereoRenderingModeAndroid { MultiPass = 0, Multiview = 1 }
-    //           SystemDisplayFrequency { Default = 0, RefreshRate72 = 72, RefreshRate90 = 90, RefreshRate120 = 120 }
+    //           SystemDisplayFrequency { Default = 0, RefreshRate72 = 1, RefreshRate90 = 2, RefreshRate120 = 3 }
 
     [MenuItem("VRLibrary/性能·⑦ 立体与ASW·现状(只报告)")]
     public static void Report()
@@ -58,7 +58,7 @@ public static class VRLibraryStereoAsw
         var so = Load(PxrSettings);
         if (so == null) return;
         SetInt(so, "stereoRenderingModeAndroid", 1, sb, "立体模式 MultiPass → Multiview");
-        SetInt(so, "systemDisplayFrequency", 72, sb, "刷新率 Default → 72Hz(预算 11.1ms → 13.9ms)");
+        SetInt(so, "systemDisplayFrequency", 1, sb, "刷新率 Default(0) → RefreshRate72(1)(预算 11.1ms → 13.9ms)");
         so.ApplyModifiedPropertiesWithoutUndo();
         AssetDatabase.SaveAssets();
 
@@ -81,7 +81,7 @@ public static class VRLibraryStereoAsw
         }
 
         sb.AppendLine("\n改后:\n" + Describe());
-        sb.AppendLine("\n下一步:打一次 APK,用 aapt 验 manifest 的 rendering_mode=1 / display_rate=72 / pvr.LateLatching=1。");
+        sb.AppendLine("\n下一步:打一次 APK,用 aapt 验 manifest 的 rendering_mode=1 / display_rate=1 / pvr.LateLatching=1。");
         Flush(sb.ToString());
     }
 
@@ -180,7 +180,7 @@ public static class VRLibraryStereoAsw
             Func<string, string> v = n => { var p = so.FindProperty(n); return p == null ? "?" : p.intValue.ToString(); };
             int stereo = int.Parse(v("stereoRenderingModeAndroid"));
             sb.AppendLine("  PXR_Settings 立体模式 = " + stereo + "(" + (stereo == 0 ? "MultiPass(双眼各画一遍)" : "Multiview(一趟画两只眼)") + ")");
-            sb.AppendLine("  PXR_Settings 刷新率   = " + v("systemDisplayFrequency") + "(0=Default, 72/90/120)");
+            sb.AppendLine("  PXR_Settings 刷新率   = " + v("systemDisplayFrequency") + "(0=Default, 1=72Hz, 2=90Hz, 3=120Hz)");
             sb.AppendLine("  PXR_Settings ASW      = " + v("enableAppSpaceWarp") + (v("enableAppSpaceWarp") == "1" ? "(开)" : "(关)"));
         }
         var pc = Load(ProjConfig);

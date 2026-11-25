@@ -22,9 +22,27 @@ public static class MezzGlassCorridor
     const string kScene = "Assets/_Scenes/SmartLibrary.unity";
     const string kLog = "Logs/mezz-corridor-survey.txt";
 
-    const float DeckTop = 3.005f;              // 二楼板面顶(实测)
     const float DeckThk = 0.25f;
-    const float DeckBottom = DeckTop - DeckThk;   // 2.755 = 板底,一层的东西不能顶过这条线
+    /// <summary>二层板面顶兜底值(拔高 4.423 之后)。平时由场上锚点反推。</summary>
+    const float DeckTopFallback = 4.423f;
+    static float _deckTop = -1f;
+
+    /// <summary>二层板面顶:由 Pad_2F_N_E 反推(锚点 = 板面 + 0.045),找不到才用兜底。</summary>
+    static float DeckTop
+    {
+        get
+        {
+            if (_deckTop > 0f) return _deckTop;
+            var a2f = GameObject.Find("SmartLibrary/Pad_2F_N_E");
+            if (a2f == null) a2f = GameObject.Find("Pad_2F_N_E");
+            if (a2f != null) { _deckTop = a2f.transform.position.y - 0.045f; return _deckTop; }
+            Debug.LogWarning("[廊道测绘] 找不到二层锚点,回退兜底 DeckTop=" + DeckTopFallback);
+            _deckTop = DeckTopFallback;
+            return _deckTop;
+        }
+    }
+
+    static float DeckBottom { get { return DeckTop - DeckThk; } }   // 板底,一层的东西不能顶过这条线
 
     struct Box
     {

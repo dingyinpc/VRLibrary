@@ -39,9 +39,14 @@ public class LibraryZoneCuller : MonoBehaviour
 
     /// <summary>冒烟测试用:全场强制全开、不做任何剔除。</summary>
     public static bool ForceAll;
+    /// <summary>是否在无烘焙遮挡或跨区时启用楼层整区剔除(可由外部关闭仅保留文字距离剔除)。</summary>
+    public static bool EnableZoneCull = true;
 
-    /// <summary>验收对照用:Logs/zone-cull-off.txt 存在时整脚本不剔除(方便"关掉优化再跑一遍"做前后对比)。</summary>
+    /// <summary>验收对照用:Logs/zone-cull-off.txt 存在时整脚本不剔除(仅编辑器)。</summary>
     bool off;
+    bool lastForceAll;
+    bool lastOff;
+    Vector3 lastEvalPos = new Vector3(float.NaN, float.NaN, float.NaN);
 
     class Zone
     {
@@ -67,6 +72,7 @@ public class LibraryZoneCuller : MonoBehaviour
     Camera cam;
     float next;
     string report;
+    Unity.XR.CoreUtils.XROrigin origin;   // 用 Rig 基点判楼层:眼高会被 Camera Offset 整体抬高,不能拿它判层
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
@@ -78,6 +84,7 @@ public class LibraryZoneCuller : MonoBehaviour
 
     void Start()
     {
+        origin = FindObjectOfType<Unity.XR.CoreUtils.XROrigin>();
         // 三个区域根:名字写死会被场景改名搞坏,所以三个都找不到就整脚本退场(宁可不优化,不要乱关)
         AddZone("一层藏书区", "Bookshelves");
         AddZone("二层藏书区", "Shelves2F");
@@ -123,7 +130,13 @@ public class LibraryZoneCuller : MonoBehaviour
     {
         if (Time.unscaledTime < next) return;
         next = Time.unscaledTime + Interval;
+#if UNITY_EDITOR
         off = File.Exists(Path.Combine(Path.GetDirectoryName(Application.dataPath), "Logs/zone-cull-off.txt"));
+#endif
+        if (cam == null) cam = Camera.main;
+        bool stateChanged = (ForceAll != lastForceAll) || (off != lastOff) || float.IsNaN(lastEvalPos.x);
+        if (!stateChanged && cam != null && (cam.transform.position - lastEvalPos).sqrMagnitude < 0.0625f)
+            return; // 相机移动 < 0.25 m 且开关未变,跳过每 0.5s 全量遍历
         Evaluate(false);
     }
 
@@ -133,6 +146,13 @@ public class LibraryZoneCuller : MonoBehaviour
         if (cam == null) cam = Camera.main;
         if (cam == null) return;
         Vector3 p = cam.transform.position;
+        lastEvalPos = p;
+        lastForceAll = ForceAll;
+        lastOff = off;
+        // 判"在哪一层"用**脚底**高度 = Rig 基点(传送会把整台 Rig 挪到目标层),而不是眼高 ——
+        // 眼高会被 Camera Offset / 追踪原点模式整体抬高(真机曾出现眼高 >2.5 ⇒ 站在一层被误判成
+        // 二层 ⇒ 一层书整片被剔除:看不见但仍能点)。找不到 Rig 才退回眼高。
+        float standY = origin != null ? origin.transform.position.y : p.y;
 
         // ---- 当前在哪个区域
         Zone here = zones[0];
@@ -144,17 +164,17 @@ public class LibraryZoneCuller : MonoBehaviour
             {
                 bool inside = p.x >= z.xz.min.x - TerracePad && p.x <= z.xz.max.x + TerracePad
                            && p.z >= z.xz.min.z - TerracePad && p.z <= z.xz.max.z + TerracePad;
-                if (inside && p.y > TwoFloorY - 1f) { here = z; onTerrace = true; }
+                if (inside && standY > TwoFloorY - 1f) { here = z; onTerrace = true; }
             }
-            else if (z.name.StartsWith("二层") && !onTerrace && p.y > TwoFloorY) here = z;
-            else if (z.name.StartsWith("一层") && !onTerrace && p.y <= TwoFloorY) here = z;
+            else if (z.name.StartsWith("二层") && !onTerrace && standY > TwoFloorY) here = z;
+            else if (z.name.StartsWith("一层") && !onTerrace && standY <= TwoFloorY) here = z;
         }
 
         bool changed = first;
         for (int i = 0; i < zones.Count; i++)
         {
             var z = zones[i];
-            if (ForceAll || off) { if (!z.on) { z.on = true; changed = true; } continue; }
+            if (ForceAll || off || !EnableZoneCull) { if (!z.on) { z.on = true; changed = true; } continue; }
             bool want = (z == here);
             if (want == z.on) continue;
             // 手里还抓着一件这片区域的东西 → 这一拍先不关(下一拍再看)
@@ -164,7 +184,8 @@ public class LibraryZoneCuller : MonoBehaviour
 
         // ---- 渲染器开合 + 文字距离剔除(同一遍,谁也别覆盖谁)
         int textOn = 0;
-        foreach (var z in zones) foreach (var r in z.rends) if (r != null && r.enabled != z.on) r.enabled = z.on;
+        if (changed)
+            foreach (var z in zones) foreach (var r in z.rends) if (r != null && r.enabled != z.on) r.enabled = z.on;
         for (int i = 0; i < texts.Count; i++)
         {
             var t = texts[i];
@@ -180,7 +201,8 @@ public class LibraryZoneCuller : MonoBehaviour
 
         if (changed || first)
         {
-            string line = "当前区域 " + here.name + "  区域开合 " + States()
+            string line = "当前区域 " + here.name + "  脚底y " + standY.ToString("0.00") + " 眼高 " + p.y.ToString("0.00")
+                + "  区域开合 " + States()
                 + "  文字可见 " + textOn + "/" + texts.Count
                 + (ForceAll ? "  **ForceAll(冒烟模式:全开)**" : "");
             Debug.Log("[ZoneCull] " + line);
@@ -221,6 +243,7 @@ public class LibraryZoneCuller : MonoBehaviour
 
     void Dump(Vector3 p, Zone here)
     {
+#if UNITY_EDITOR
         try
         {
             var sb = new StringBuilder();
@@ -241,5 +264,6 @@ public class LibraryZoneCuller : MonoBehaviour
             File.WriteAllText(ReportPath, sb.ToString(), new UTF8Encoding(false));
         }
         catch (System.Exception e) { Debug.LogWarning("[ZoneCull] 报告失败:" + e.Message); }
+#endif
     }
 }

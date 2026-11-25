@@ -49,9 +49,66 @@ public static class TerraceSetup
     // 屏高是**被月亮钉死的**:屏上沿仰角 = atan2(0.15+3-1.6, 7) ≈ 12.5°,月亮 15° → 净空只剩 +2.5°。
     // 所以 16:9 只能"守住 3 m 高、把宽从 9 m 收到 5.33 m";想要更大的屏得先把座位往后挪或让月亮改方位。
     const float ScreenH = 3f, ScreenW = ScreenH * 16f / 9f;   // 16:9 = 5.333×3 m,与 1920×1080 片源同比例
-    const float DeckTop = 3.0f;           // 与二层环廊板面 3.005 齐平,走过去不用跨台阶
-    const float PadY = 3.045f;            // 沿用 VRLibraryAnchors2F 的锚点高度
     const float Margin = 4.2f;            // 锚点离建筑外墙角的距离
+
+    // ── 标高基准:不再写死,从场上活着的锚点反推 ───────────────────────────
+    // v7.35 整馆拔高 +1.423 m 后,这里曾写死 DeckTop=3.0 / PadY=3.045(旧标高),
+    // 重跑本菜单会把整块露台摆回拔高前的位置。现改为运行时解析。
+    const float DeckTopFallback = 4.423f; // 露台板面顶(拔高后实测)
+    const float PadYFallback = 4.468f;    // 露台锚点高 = 板面 + 0.045
+
+    static float _deckTop = -1f, _padY = -1f;
+
+    /// <summary>露台板面顶:优先由场上 Pad_Terrace 反推(锚点 = 板面 + 0.045),再退 TerraceDeck 顶面。</summary>
+    static float DeckTop
+    {
+        get
+        {
+            if (_deckTop > 0f) return _deckTop;
+            var pad = GameObject.Find("SmartLibrary/StarryTerrace/Pad_Terrace");
+            if (pad != null) { _deckTop = pad.transform.position.y - 0.045f; return _deckTop; }
+            var deck = GameObject.Find("SmartLibrary/StarryTerrace/TerraceDeck");
+            if (deck != null)
+            {
+                var r = deck.GetComponent<Renderer>();
+                if (r != null) { _deckTop = r.bounds.max.y; return _deckTop; }
+            }
+            Debug.LogWarning("[Terrace] 场上找不到 Pad_Terrace / TerraceDeck,回退兜底 DeckTop=" + DeckTopFallback);
+            _deckTop = DeckTopFallback;
+            return _deckTop;
+        }
+    }
+
+    /// <summary>露台锚点高:优先沿用场上 Pad_Terrace,退二层回廊锚点。</summary>
+    static float PadY
+    {
+        get
+        {
+            if (_padY > 0f) return _padY;
+            var pad = GameObject.Find("SmartLibrary/StarryTerrace/Pad_Terrace");
+            if (pad != null) { _padY = pad.transform.position.y; return _padY; }
+            var a2f = GameObject.Find("SmartLibrary/Pad_2F_N_E");
+            if (a2f != null) { _padY = a2f.transform.position.y; return _padY; }
+            Debug.LogWarning("[Terrace] 场上找不到任何锚点,回退兜底 PadY=" + PadYFallback);
+            _padY = PadYFallback;
+            return _padY;
+        }
+    }
+
+    static float _mezzDeckTop = -1f;
+
+    /// <summary>二层环廊板面顶:由 Pd_2F_* 锚点反推(锚点 = 板面 + 0.045)。用于报告里比对露台是否与环廊齐平。</summary>
+    static float MezzDeckTop
+    {
+        get
+        {
+            if (_mezzDeckTop > 0f) return _mezzDeckTop;
+            var a2f = GameObject.Find("SmartLibrary/Pad_2F_N_E");
+            if (a2f != null) { _mezzDeckTop = a2f.transform.position.y - 0.045f; return _mezzDeckTop; }
+            _mezzDeckTop = DeckTop;   // 二层与露台同高,退化成同一基准
+            return _mezzDeckTop;
+        }
+    }
 
     static StringBuilder sb;
     static Material matDeck, matFrame, matScreen, matPlaza, matRail, matGlow;
@@ -72,6 +129,13 @@ public static class TerraceSetup
         sb.AppendLine("== 搭建星空露台 ==");
         sb.AppendLine("时间 " + System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             + "  指纹 " + EditorApplication.timeSinceStartup.ToString("0.000"));
+
+        // ⚠ 必须在 Wipe 之前解析标高基准 —— Wipe 会把 Pad_Terrace 删掉,
+        //   之后就没有"场上活着的锚点"可读了。这里一次性钉住并写进报告。
+        _deckTop = _padY = _mezzDeckTop = -1f;          // 清缓存,强制重解析
+        float baseDeckTop = DeckTop, basePadY = PadY, baseMezz = MezzDeckTop;
+        sb.AppendLine(string.Format("标高基准(开工前从场上解析):露台板面 {0:0.000}  锚点 {1:0.000}  二层环廊板面 {2:0.000}",
+            baseDeckTop, basePadY, baseMezz));
         SnapshotOnce(scene);
 
         var moon = AimMoon(root.transform);
@@ -108,7 +172,7 @@ public static class TerraceSetup
     // ------------------------------------------------------------ 前置
 
     /// <summary>
-    /// 四块观影面板编辑期默认关着,而桥按名字找物体走的是 GameObject.Find —— 找不到未激活物体,
+    /// 三块观影面板编辑期默认关着,而桥按名字找物体走的是 GameObject.Find —— 找不到未激活物体,
     /// 所以远程截图验收只能由这个菜单来摆面板显隐:读 `Logs/panel-mode.txt`(逗号分隔的名单,或 all / none),
     /// 名单内的开、其余关。**只改内存,不保存场景**。
     /// </summary>
@@ -123,13 +187,13 @@ public static class TerraceSetup
         string mode = File.ReadAllText(f).Trim();
         var want = new List<string>();
         if (mode.Equals("all", System.StringComparison.OrdinalIgnoreCase))
-            want.AddRange(new[] { "NoticePanel", "CatalogPanel", "TransportPanel", "LeavePanel" });
+            want.AddRange(new[] { "NoticePanel", "CatalogPanel", "TransportPanel" });
         else if (!mode.Equals("none", System.StringComparison.OrdinalIgnoreCase))
             foreach (var s in mode.Split(new[] { ',', '，', '\n', '\r' }, System.StringSplitOptions.RemoveEmptyEntries))
                 want.Add(s.Trim());
 
         var msg = new StringBuilder();
-        foreach (var n in new[] { "NoticePanel", "CatalogPanel", "TransportPanel", "LeavePanel" })
+        foreach (var n in new[] { "NoticePanel", "CatalogPanel", "TransportPanel" })
         {
             var go = FindDeep(root.transform, n);
             if (go == null) { msg.Append(n + ":缺失  "); continue; }
@@ -328,8 +392,8 @@ public static class TerraceSetup
         var deck = Box("TerraceDeck", parent, c, s, matDeck);
         var b = new Bounds(c, s);
         sb.AppendLine(string.Format("  [露台板] 足迹 x {0:0.00}~{1:0.00}  z {2:0.00}~{3:0.00}({4:0.0}×{5:0.0} m)"
-            + "  板面顶 y {7:0.000}(二层环廊板面 3.005,差 {8:+0.000;-0.000;0}){6}",
-            wallX, maxX, minZ, wallZ, s.x, s.z, "", b.max.y, b.max.y - 3.005f));
+            + "  板面顶 y {7:0.000}(二层环廊板面 {9:0.000},差 {8:+0.000;-0.000;0}){6}",
+            wallX, maxX, minZ, wallZ, s.x, s.z, "", b.max.y, b.max.y - MezzDeckTop, MezzDeckTop));
         // 压边霓虹:沿两条外边各一条,给夜里一个"这里到边了"的读感
         var e1 = Box("TerraceEdge_E", parent, new Vector3(maxX - 0.06f, DeckTop + 0.012f, (wallZ + minZ) * 0.5f),
             new Vector3(0.12f, 0.024f, s.z), matGlow);
@@ -632,7 +696,7 @@ public static class TerraceSetup
     static TerraceCinema cinema;
 
     /// <summary>
-    /// 观影模式的控制器与四块面板。**所有 UI 都在这里编辑期建好**,运行时只切 activeSelf
+    /// 观影模式的控制器与三块面板。**所有 UI 都在这里编辑期建好**,运行时只切 activeSelf
     /// (Play 里 AddComponent&lt;Text&gt; 会 NRE,见坑 1)。
     /// </summary>
     static Transform BuildCinema(Transform parent, Transform screenGroup, Vector3 seatPos, float moonYaw,
@@ -663,13 +727,15 @@ public static class TerraceSetup
 
         var eye = seatPos + Vector3.up * 1.60f;       // 坐定后的眼睛高度(1.6 m 站姿头高)
 
-        // 目录:0.0018@0.88 m 摊到 63° 高(截图复核出来的,扫六行要仰头)→ 收到 40° 高 / 35° 宽
+        // 目录:0.0018@0.88 m 摊到 63° 高(截图复核出来的,扫六行要仰头)→ 收到 40° 高 / 35° 宽。
+        // v7.41(2026-10-19)用户定案:**"前"以座位→银幕方向为准,不跟随头部朝向** ——
+        // 目录从"左前方 0.95 m / 左 0.52 m"挪到座位正前方,中心落在 fwd 轴上;人转头/转身时它原地不动。
+        // 左前方那版的斜距是 sqrt(0.95²+0.52²)≈1.08 m;居中后必须沿用 1.08 m,
+        // 否则正前方 0.95 m 会把张角从 40° 撑到 45°,标题被顶出视野(截图实测)。
         cinema.catalogPanel = Panel(go.transform, "CatalogPanel",
-            eye + fwd * 0.95f - side * 0.52f, eye, 520, 600, 0.0013f);
+            eye + fwd * 1.08f, eye, 520, 600, 0.0013f);
         cinema.transportPanel = Panel(go.transform, "TransportPanel",
             eye + fwd * 0.85f + side * 0.52f + Vector3.up * -0.25f, eye, 420, 380, 0.00135f);
-        cinema.leavePanel = Panel(go.transform, "LeavePanel",
-            eye + fwd * 1.05f + Vector3.up * -0.05f, eye, 380, 190, 0.0022f);
         // 须知 640×430:放在 1.60 m 会摊到 66° 宽(截图复核出来的),得转头才能读 → 推到 1.80 m、缩到 48°
         cinema.noticePanel = Panel(go.transform, "NoticePanel",
             eye + fwd * 1.80f, eye, 640, 430, 0.0025f);
@@ -697,7 +763,7 @@ public static class TerraceSetup
         cinema.noticeButton = MakeButton(cat, "Notice", "观影须知",
             new Vector2(0.05f, 0.015f), new Vector2(0.46f, 0.095f), new Color(0.13f, 0.26f, 0.36f, 0.95f));
         Bind(cinema.noticeButton, cinema, "OnShowNotice");
-        MakeText(cat, "Hint", "选一片开始播放\n右手 Grip 按住可呼出本面板", 19,
+        MakeText(cat, "Hint", "选一片开始播放\n右手 Grip 按一下呼出/收起本面板", 19,
             new Color(0.62f, 0.78f, 0.88f), TextAnchor.LowerCenter,
             new Vector2(0.48f, 0.01f), new Vector2(0.98f, 0.10f), new Vector2(2f, 2f), new Vector2(-2f, 0f));
 
@@ -718,12 +784,10 @@ public static class TerraceSetup
             new Vector2(0.05f, 0.28f), new Vector2(0.48f, 0.45f), tBlue);
         cinema.stopButton = MakeButton(tr, "StopFilm", "关闭影片",
             new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.45f), tBlue);
-        // 最后一行两颗:退出观影(只解锁,人还站在露台) / 回一层大厅(就地解锁并传送回去)。
-        // 身后那块 TerracePanel 要转身用射线打,真机实测里是最容易点不中的一条路 → 面前必须留出口。
-        cinema.exitButton = MakeButton(tr, "Exit", "退出观影",
-            new Vector2(0.05f, 0.05f), new Vector2(0.48f, 0.24f), new Color(0.30f, 0.12f, 0.16f, 0.95f));
+        // 最后一行只留「回一层大厅」:观影态没有任何就地解锁/离座入口,
+        // 这颗是唯一出口,所以占满整行(不再和「退出观影」并排)。
         cinema.lobbyButton = MakeButton(tr, "BackLobby", "回一层大厅",
-            new Vector2(0.52f, 0.05f), new Vector2(0.95f, 0.24f), new Color(0.10f, 0.22f, 0.34f, 0.95f));
+            new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.24f), new Color(0.10f, 0.22f, 0.34f, 0.95f));
         cinema.pauseLabel = cinema.pauseButton.GetComponentInChildren<Text>();
         cinema.speedLabel = cinema.speedButton.GetComponentInChildren<Text>();
         Bind(cinema.pauseButton, cinema, "OnPauseToggle");
@@ -732,29 +796,17 @@ public static class TerraceSetup
         Bind(cinema.seekFwdButton, cinema, "OnSeekForward");
         Bind(cinema.skipButton, cinema, "OnSkip");
         Bind(cinema.stopButton, cinema, "OnStopFilm");
-        Bind(cinema.exitButton, cinema, "OnExitCinema");
         Bind(cinema.lobbyButton, cinema, "OnBackToLobby");
-
-        // —— 离座确认
-        var lv = cinema.leavePanel.transform;
-        MakeText(lv, "Title", "要离座吗？", 30, Color.white, TextAnchor.UpperCenter,
-            new Vector2(0f, 0.58f), new Vector2(1f, 1f), new Vector2(0f, -2f), new Vector2(0f, 0f));
-        cinema.stayButton = MakeButton(lv, "Stay", "留下继续看",
-            new Vector2(0.05f, 0.08f), new Vector2(0.48f, 0.5f), new Color(0.10f, 0.30f, 0.22f, 0.95f));
-        cinema.leaveButton = MakeButton(lv, "Leave", "离座走动",
-            new Vector2(0.52f, 0.08f), new Vector2(0.95f, 0.5f), new Color(0.30f, 0.16f, 0.12f, 0.95f));
-        Bind(cinema.stayButton, cinema, "OnStaySeated");
-        Bind(cinema.leaveButton, cinema, "OnLeaveSeat");
 
         // —— 观影院须知
         var no = cinema.noticePanel.transform;
         MakeText(no, "Title", "观影院须知", 40, Color.white, TextAnchor.UpperCenter,
             new Vector2(0f, 0.84f), new Vector2(1f, 1f), new Vector2(0f, -6f), new Vector2(0f, 0f));
-        MakeText(no, "Body", "一、观影区内身体位置会被锁定，转头即可环视；\n"
-            + "二、需要走动时推摇杆会弹出「要离座吗」，选择离座后恢复自由移动；\n"
-            + "三、右手按住 Grip 呼出目录，左手按住 Grip 呼出播控（暂停 / 倍速 / 跳过）；\n"
+        MakeText(no, "Body", "一、进入观影后身体位置会被锁定，无法走动；转头即可环视；\n"
+            + "二、观影期间不提供离座选项，需要离开时请按播控面板上的「回一层大厅」；\n"
+            + "三、右手 Grip 按一下呼出/收起目录，左手 Grip 按一下呼出/收起播控；\n"
             + "四、影片源由馆方放入 StreamingAssets 后自动上屏，缺片时屏上会显示提示；\n"
-            + "五、退出观影后，抓书、加速等按键全部恢复原有用法。",
+            + "五、关闭影片只退回待机卡，不会解锁站位；回一层大厅后抓书、加速等按键恢复原用法。",
             22, new Color(0.82f, 0.90f, 0.96f), TextAnchor.UpperLeft,
             new Vector2(0.04f, 0.20f), new Vector2(0.96f, 0.82f), new Vector2(0f, 0f), new Vector2(0f, 0f));
         cinema.ackButton = MakeButton(no, "Ack", "我已知晓，开始观影",
@@ -764,7 +816,6 @@ public static class TerraceSetup
         // 面板默认全关(运行时由 TerraceCinema 显隐);信息卡交给 Start 决定
         cinema.catalogPanel.SetActive(false);
         cinema.transportPanel.SetActive(false);
-        cinema.leavePanel.SetActive(false);
         cinema.noticePanel.SetActive(false);
 
         var sc = cinema.screen;
@@ -774,8 +825,9 @@ public static class TerraceSetup
             sc.infoCard = card;
         }
         EditorUtility.SetDirty(cinema);
-        sb.AppendLine(string.Format("  [观影模式] CinemaController + 4 块预建面板(目录/播控/离座/须知) + 大屏信息卡;"
-            + "目录左前方 0.95 m/左 0.52 m(40° 高),播控 1.0 m 右(36° 宽),离座 1.05 m,须知 1.80 m(48° 宽)"));
+        sb.AppendLine(string.Format("  [观影模式] CinemaController + 3 块预建面板(目录/播控/须知) + 大屏信息卡;"
+            + "目录在座位正前方 1.08 m(以座位→银幕为前,40° 高 / 35° 宽),播控 0.85 m 右前方(36° 宽),"
+            + "须知 1.80 m(48° 宽);不建离座确认/退出观影 —— 观影态硬锁站位,唯一出口是「回一层大厅」"));
         return go.transform;
     }
 
@@ -976,13 +1028,32 @@ public static class TerraceSetup
             if (cinema.teleporter == null) { sb.AppendLine("  !! cinema.teleporter 空 → 导览屏按钮传不过来"); bad++; }
             var panels = new[] {
                 new { n = "须知", go = cinema.noticePanel }, new { n = "目录", go = cinema.catalogPanel },
-                new { n = "播控", go = cinema.transportPanel }, new { n = "离座", go = cinema.leavePanel } };
+                new { n = "播控", go = cinema.transportPanel } };
             foreach (var p in panels)
             {
                 if (p.go == null) { sb.AppendLine("  !! " + p.n + "面板没建"); bad++; continue; }
                 if (p.go.GetComponent<Canvas>() == null) { sb.AppendLine("  !! " + p.n + "面板没有 Canvas"); bad++; }
                 if (p.go.GetComponent<UnityEngine.UI.GraphicRaycaster>() == null)
                 { sb.AppendLine("  !! " + p.n + "面板没有射线器 → 看得见点不着"); bad++; }
+            }
+            // 离座确认/退出观影已删除:场景里不该再留这两块
+            if (FindDeep(cinema.transform, "LeavePanel") != null)
+            { sb.AppendLine("  !! 还留着 LeavePanel(离座确认已取消)"); bad++; }
+            if (FindDeep(cinema.transform, "Exit") != null)
+            { sb.AppendLine("  !! 还留着 Exit 按钮(退出观影已取消)"); bad++; }
+            // 目录必须落在"座位→银幕"方向的正前方,而不是跟着头部朝向或偏在一边
+            if (cinema.catalogPanel != null && cinema.seat != null)
+            {
+                var f = cinema.seat.forward; f.y = 0f; f.Normalize();
+                var to = cinema.catalogPanel.transform.position - cinema.seat.position; to.y = 0f;
+                float along = Vector3.Dot(to, f);
+                float lateral = Vector3.Dot(to, cinema.seat.right);
+                float yawOff = Vector3.Angle(cinema.catalogPanel.transform.forward, cinema.seat.forward);
+                bool frontOk = along > 0.5f && Mathf.Abs(lateral) < 0.05f && yawOff < 1f;
+                sb.AppendLine(string.Format("  [复核·目录朝前] 沿座位→银幕 {0:0.00} m,横向偏 {1:+0.00;-0.00;0.00} m,"
+                    + "朝向差 {2:0.0}° {3}", along, lateral, yawOff,
+                    frontOk ? "✓ 正前方" : "!! 没摆正(要求沿前 >0.5、横向 <5 cm、朝向差 <1°)"));
+                if (!frontOk) bad++;
             }
             int bound = 0;
             for (int i = 0; i < cinema.filmSlots.Length; i++)
@@ -993,9 +1064,7 @@ public static class TerraceSetup
                 new { n = "暂停", b = cinema.pauseButton }, new { n = "倍速", b = cinema.speedButton },
                 new { n = "后退5秒", b = cinema.seekBackButton }, new { n = "前进5秒", b = cinema.seekFwdButton },
                 new { n = "跳过", b = cinema.skipButton }, new { n = "关闭影片", b = cinema.stopButton },
-                new { n = "退出", b = cinema.exitButton },
                 new { n = "须知确认", b = cinema.ackButton }, new { n = "回看须知", b = cinema.noticeButton },
-                new { n = "留下", b = cinema.stayButton }, new { n = "离座", b = cinema.leaveButton },
                 new { n = "回一层大厅", b = cinema.lobbyButton } };
             if (cinema.lobbyTeleporter == null)
             { sb.AppendLine("  !! cinema.lobbyTeleporter 空 → 播控面板那颗「回一层大厅」按了不会传送"); bad++; }

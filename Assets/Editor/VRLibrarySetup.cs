@@ -417,40 +417,11 @@ public static class VRLibrarySetup
         Box(desk.transform, "Body", new Vector3(0f, 0.525f, 0f), new Vector3(1.2f, 1.05f, 0.7f), matMetal);
         Box(desk.transform, "TopGlow", new Vector3(0f, 1.065f, 0f), new Vector3(1.22f, 0.03f, 0.72f), matCyan);
 
-        // 归还感应口(Socket)
-        var socketGo = new GameObject("BookReturnSocket");
-        socketGo.transform.SetParent(desk.transform, false);
-        socketGo.transform.localPosition = new Vector3(0f, 1.22f, 0f);
-        var col = socketGo.AddComponent<SphereCollider>();
-        col.isTrigger = true;
-        col.radius = 0.18f;
-        var socket = socketGo.AddComponent<XRSocketInteractor>();
-        socket.showInteractableHoverMeshes = true;
-        socketGo.AddComponent<BookReturnSocket>();
-
-        // 感应口发光环
-        Cylinder(socketGo.transform, "ReturnRing", new Vector3(0f, -0.12f, 0f), new Vector3(0.5f, 0.008f, 0.5f), matMagenta);
-
-        // 归还状态屏(世界空间 Canvas)
-        var canvasGo = new GameObject("ReturnStatusCanvas", typeof(RectTransform), typeof(Canvas));
-        canvasGo.transform.SetParent(desk.transform, false);
-        var canvas = canvasGo.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        var rt = canvasGo.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(620f, 220f);
-        canvasGo.transform.localPosition = new Vector3(0f, 1.75f, 0.15f);
-        // 可读面 = -forward:Euler(25,0,0) 会把正字甩到 -Z(朝后墙)。本意是朝馆内 +Z、屏面下压对着柜台前的人
-        canvasGo.transform.localRotation = Quaternion.Euler(-25f, 180f, 0f);
-        canvasGo.transform.localScale = Vector3.one * 0.0016f;
-        canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
-
-        var bg = canvasGo.AddComponent<Image>();
-        bg.color = new Color(0.02f, 0.05f, 0.09f, 0.9f);
-
-        var text = MakeText(canvasGo.transform, "StatusText", "归还口:将书籍放入发光感应区即可归还",
-            26, new Color(0.4f, 0.95f, 1f), TextAnchor.MiddleCenter,
-            Vector2.zero, Vector2.one, new Vector2(16f, 12f), new Vector2(-16f, -12f));
-        socketGo.GetComponent<BookReturnSocket>().statusText = text;
+        // 2026-11-06 演示裁剪:归还服务整体移除。
+        // 书在 v7.31 改成"点击即读"(XRSimpleInteractable、无 Rigidbody、不可抓),
+        // XRSocketInteractor 永远收不到书 ⇒ 这条链路实际不可用,所以不再生成
+        // BookReturnSocket / ReturnRing / ReturnStatusCanvas。
+        // 服务台本体(Body / TopGlow)保留。
     }
 
     static void BuildCentralKiosk(Transform root, Material matMetal, Material matMagenta)
@@ -489,11 +460,12 @@ public static class VRLibrarySetup
             new Vector2(0.04f, 0.24f), new Vector2(0.96f, 0.58f), Vector2.zero, Vector2.zero);
         controller.statusText = status;
 
-        string[] labels = { "馆藏导览", "智能检索", "归还服务" };
-        var buttons = new Button[3];
-        for (int i = 0; i < 3; i++)
+        // 2026-11-06 演示裁剪:「归还服务」随归还功能一起移除,只剩两颗并列居中。
+        string[] labels = { "馆藏导览", "智能检索" };
+        var buttons = new Button[labels.Length];
+        for (int i = 0; i < labels.Length; i++)
         {
-            float x = -245f + i * 245f;
+            float x = -125f + i * 250f;
             buttons[i] = MakeButton(canvasGo.transform, $"Button_{labels[i]}", labels[i],
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                 new Vector2(x - 110f, 22f), new Vector2(x + 110f, 88f),
@@ -502,7 +474,6 @@ public static class VRLibrarySetup
 
         UnityEventTools.AddVoidPersistentListener(buttons[0].onClick, new UnityAction(controller.OnGuideButton));
         UnityEventTools.AddVoidPersistentListener(buttons[1].onClick, new UnityAction(controller.OnSearchButton));
-        UnityEventTools.AddVoidPersistentListener(buttons[2].onClick, new UnityAction(controller.OnReturnButton));
 
         // 底座霓虹环
         var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);

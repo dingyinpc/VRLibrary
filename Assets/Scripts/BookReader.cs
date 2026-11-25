@@ -28,6 +28,11 @@ public class BookReader : MonoBehaviour
 
     public float distance = 1.55f;
     public float heightOffset = -0.45f;
+    public float followSpeed = 6f;
+    [Tooltip("柔和跟随(默认关闭，保持原版实时紧跟):开启后仅当偏离超过阈值时才开始跟到正前方")]
+    public float followAngleThreshold = 28f;
+    public bool lazyFollow = false;
+    bool isLazyFollowing;
 
     [Header("指外即关(面板开着时,指针不在面板上点一下 = 关书)")]
     public float missMargin = 0.08f;   // 面板矩形边缘的判定余量(米),防"贴边点按钮被判成点外面"
@@ -36,9 +41,11 @@ public class BookReader : MonoBehaviour
     readonly List<XRBaseController> missCtrls = new List<XRBaseController>();
     readonly List<bool> missHeld = new List<bool>();
     readonly List<XRRayInteractor> missRays = new List<XRRayInteractor>();
+    bool missWiringCollected;
     RectTransform panelRT;
     float lastOpenTime = -99f;
 
+    [System.Serializable]
     public class Bookmark
     {
         public string bookTitle;
@@ -46,12 +53,39 @@ public class BookReader : MonoBehaviour
         public string snippet;
         public string slotCode;
     }
+
+    [System.Serializable]
+    class BookmarkStore
+    {
+        public Bookmark[] items;
+    }
+
     public static readonly List<Bookmark> Bookmarks = new List<Bookmark>();
 
     const string kPrefPrefix = "BM_";
-    /// <summary>启动时从 PlayerPrefs 恢复书签(跨应用启动保留)。</summary>
+    const string kPrefJson = "vrlib.bookmarks.v1";
+
+    /// <summary>启动时从 PlayerPrefs 恢复书签(优先读 JSON 单键,兼容迁移旧 BM_i 格式)。</summary>
     void LoadBookmarks()
     {
+        Bookmarks.Clear();
+        string json = PlayerPrefs.GetString(kPrefJson, "");
+        if (!string.IsNullOrEmpty(json))
+        {
+            try
+            {
+                var store = JsonUtility.FromJson<BookmarkStore>(json);
+                if (store != null && store.items != null)
+                {
+                    for (int i = 0; i < store.items.Length; i++)
+                        if (store.items[i] != null && !string.IsNullOrEmpty(store.items[i].bookTitle))
+                            Bookmarks.Add(store.items[i]);
+                }
+                return;
+            }
+            catch { /* 回退旧格式读取 */ }
+        }
+
         for (int i = 0; i < 200; i++)
         {
             string v = PlayerPrefs.GetString(kPrefPrefix + i, "");
@@ -66,22 +100,11 @@ public class BookReader : MonoBehaviour
             Bookmarks.Add(bm);
         }
     }
+
     void SaveBookmarkToPrefs(Bookmark bm)
     {
-        // 找到该书签在列表中的位置作为槽位;重写全部书签保持顺序稳定
-        int idx = Bookmarks.IndexOf(bm);
-        for (int i = 0; i < 200; i++)
-        {
-            if (i < Bookmarks.Count)
-            {
-                var b = Bookmarks[i];
-                PlayerPrefs.SetString(kPrefPrefix + i, b.page + "|" + b.bookTitle + "|" + b.slotCode + "|" + b.snippet);
-            }
-            else if (PlayerPrefs.GetString(kPrefPrefix + i, "").Length > 0)
-            {
-                PlayerPrefs.DeleteKey(kPrefPrefix + i);
-            }
-        }
+        var store = new BookmarkStore { items = Bookmarks.ToArray() };
+        PlayerPrefs.SetString(kPrefJson, JsonUtility.ToJson(store));
         PlayerPrefs.Save();
     }
 
@@ -109,6 +132,11 @@ public class BookReader : MonoBehaviour
     public void Open(LibraryBook book)
     {
         if (book == null) return;
+        StopAllCoroutines();
+        flipping = false;
+        isLazyFollowing = false;
+        if (contentText != null) contentText.rectTransform.localScale = Vector3.one;
+
         currentBook = book;
         currentTitle = book.title;
         if (titleText != null) titleText.text = "《" + book.title + "》" + (string.IsNullOrEmpty(book.slotCode) ? "" : "  [" + book.slotCode + "]");
@@ -133,6 +161,10 @@ public class BookReader : MonoBehaviour
 
     public void Close()
     {
+        StopAllCoroutines();
+        flipping = false;
+        isLazyFollowing = false;
+        if (contentText != null) contentText.rectTransform.localScale = Vector3.one;
         SaveBookmark();
         if (bookmarkListPanel != null) bookmarkListPanel.SetActive(false);
         panelRoot.SetActive(false);
@@ -231,15 +263,46 @@ public class BookReader : MonoBehaviour
         if (panelRoot != null && panelRoot.activeSelf && Camera.main != null)
         {
             var camT = Camera.main.transform;
-            Vector3 target = camT.position + camT.forward * distance;
-            target.y = camT.position.y + heightOffset;
-            transform.position = Vector3.Lerp(transform.position, target, Time.deltaTime * 6f);
-            Vector3 dir = transform.position - camT.position;
-            dir.y = 0f;
-            if (dir.sqrMagnitude > 0.001f)
+            bool needFollow = !lazyFollow;
+            if (!needFollow)
             {
-                Quaternion look = Quaternion.LookRotation(dir);
-                transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 6f);
+                Vector3 toPanel = transform.position - camT.position;
+                Vector3 horizToPanel = new Vector3(toPanel.x, 0f, toPanel.z);
+                Vector3 horizFwd = new Vector3(camT.forward.x, 0f, camT.forward.z);
+                if (horizToPanel.sqrMagnitude < 0.01f)
+                {
+                    isLazyFollowing = true;
+                }
+                else if (horizFwd.sqrMagnitude > 0.001f)
+                {
+                    float yawDiff = Vector3.Angle(horizFwd, horizToPanel);
+                    float distDiff = Mathf.Abs(horizToPanel.magnitude - distance);
+                    float yDiff = Mathf.Abs(transform.position.y - (camT.position.y + heightOffset));
+                    if (!isLazyFollowing)
+                    {
+                        if (yawDiff > followAngleThreshold || distDiff > 0.65f || yDiff > 0.45f)
+                            isLazyFollowing = true;
+                    }
+                    else if (yawDiff < 2f && distDiff < 0.05f && yDiff < 0.05f)
+                    {
+                        isLazyFollowing = false;
+                    }
+                }
+                needFollow = isLazyFollowing;
+            }
+            if (needFollow)
+            {
+                float k = Time.deltaTime * followSpeed;
+                Vector3 target = camT.position + camT.forward * distance;
+                target.y = camT.position.y + heightOffset;
+                transform.position = Vector3.Lerp(transform.position, target, k);
+                Vector3 dir = transform.position - camT.position;
+                dir.y = 0f;
+                if (dir.sqrMagnitude > 0.001f)
+                {
+                    Quaternion look = Quaternion.LookRotation(dir);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, look, k);
+                }
             }
         }
         PollMissClose();
@@ -249,14 +312,23 @@ public class BookReader : MonoBehaviour
 
     void CollectMissWiring()
     {
-        missCtrls.Clear(); missHeld.Clear(); missRays.Clear();
-        foreach (var c in FindObjectsOfType<XRBaseController>())
+        if (!missWiringCollected)
         {
-            missCtrls.Add(c);
-            missHeld.Add(c.selectInteractionState.active);   // 预热基线:开书瞬间按住的扳机不算点击
+            missWiringCollected = true;
+            missCtrls.Clear(); missHeld.Clear(); missRays.Clear();
+            foreach (var c in FindObjectsOfType<XRBaseController>())
+            {
+                missCtrls.Add(c);
+                missHeld.Add(c.selectInteractionState.active);   // 预热基线:开书瞬间按住的扳机不算点击
+            }
+            foreach (var r in FindObjectsOfType<XRRayInteractor>())
+                if (r != null && r.isActiveAndEnabled) missRays.Add(r);
         }
-        foreach (var r in FindObjectsOfType<XRRayInteractor>())
-            if (r != null && r.isActiveAndEnabled) missRays.Add(r);
+        else
+        {
+            for (int i = 0; i < missCtrls.Count; i++)
+                missHeld[i] = missCtrls[i] != null && missCtrls[i].selectInteractionState.active;
+        }
     }
 
     void PollMissClose()
@@ -360,26 +432,34 @@ public class BookReader : MonoBehaviour
 
     void Refresh(bool animate)
     {
-        if (contentText == null) return;
+        if (contentText == null || pages.Length == 0) return;
+        page = Mathf.Clamp(page, 0, pages.Length - 1);
         if (pageText != null) pageText.text = (page + 1) + " / " + pages.Length;
-        if (!animate) { contentText.text = pages[page]; return; }
-        if (!flipping) StartCoroutine(FlipRoutine());
+        if (!animate)
+        {
+            contentText.text = pages[page];
+            return;
+        }
+        // 快连翻页时直接刷新正文保证页码与文本严格同步,或由正在运行的翻页动画收尾写回最新页
+        if (flipping)
+        {
+            contentText.text = pages[page];
+            return;
+        }
+        StartCoroutine(FlipRoutine());
     }
 
     IEnumerator FlipRoutine()
     {
         flipping = true;
         var rt = contentText.rectTransform;
-        while (true)
-        {
-            float t = 0f;
-            while (t < 0.12f) { t += Time.deltaTime; rt.localScale = new Vector3(Mathf.Clamp01(1f - t / 0.12f), 1f, 1f); yield return null; }
-            contentText.text = pages[page];
-            t = 0f;
-            while (t < 0.12f) { t += Time.deltaTime; rt.localScale = new Vector3(Mathf.Clamp01(t / 0.12f), 1f, 1f); yield return null; }
-            rt.localScale = Vector3.one;
-            break;
-        }
+        float t = 0f;
+        while (t < 0.12f) { t += Time.deltaTime; rt.localScale = new Vector3(Mathf.Clamp01(1f - t / 0.12f), 1f, 1f); yield return null; }
+        contentText.text = pages[page];
+        t = 0f;
+        while (t < 0.12f) { t += Time.deltaTime; rt.localScale = new Vector3(Mathf.Clamp01(t / 0.12f), 1f, 1f); yield return null; }
+        rt.localScale = Vector3.one;
+        contentText.text = pages[page];   // 兜底同步,防止动画期间连点导致内容停在旧页
         flipping = false;
     }
 

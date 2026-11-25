@@ -90,17 +90,21 @@ Shader "Skybox/CyberNight"
             struct Attributes
             {
                 float4 positionOS : POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float3 dir        : TEXCOORD0;   // 天空盒立方体局部方向 == 世界方向
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             Varyings vert(Attributes input)
             {
                 Varyings o;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.positionCS = TransformObjectToHClip(input.positionOS.xyz);
                 o.dir = input.positionOS.xyz;
                 return o;
@@ -194,6 +198,7 @@ Shader "Skybox/CyberNight"
             // ---------- 主函数 ----------
             float4 frag(Varyings i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float3 d = normalize(i.dir);
 
                 // 1) 基础天空渐变(天顶深蓝 → 地平线青绿 → 地面暗蓝灰)

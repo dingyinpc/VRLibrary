@@ -36,7 +36,7 @@ public static class VRLibraryFfr
         sb.AppendLine("场景 PXR_Manager.foveationLevel = " + SceneLevel());
         var so = new SerializedObject(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(ProjAsset));
         var p = so.FindProperty("foveationLevel");
-        sb.AppendLine("项目设置 PXR_ProjectSetting.foveationLevel = " + (p == null ? "找不到" : p.intValue.ToString()));
+        sb.AppendLine("项目设置 PXR_ProjectSetting.foveationLevel = " + (p == null ? "当前 SDK 版本无此字段(由场景 PXR_Manager 与 VRLibraryBoot 控制)" : p.intValue.ToString()));
         sb.AppendLine("运行期兜底:VRLibraryBoot.EnableFfr() 真机上会再调一次并打印读回档位");
         Flush(sb.ToString(), "Logs/perf-ffr.txt");
     }
@@ -73,14 +73,14 @@ public static class VRLibraryFfr
             }
         }
 
-        // ---- 项目设置(与场景侧保持一致,免得下次有人在 Inspector 上点一下又拷回 None)
+        // ---- 项目设置(兼容 SDK 3.x 字段;2.5.3 中此字段仅存在于场景 PXR_Manager 上)
         var proj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(ProjAsset);
         if (proj == null) sb.AppendLine("  !! 找不到 " + ProjAsset);
         else
         {
             var so = new SerializedObject(proj);
             var p = so.FindProperty("foveationLevel");
-            if (p == null) sb.AppendLine("  !! 项目设置里找不到 foveationLevel");
+            if (p == null) sb.AppendLine("  项目设置 PXR_ProjectSetting 无 foveationLevel 字段(SDK 2.5.3 仅在 PXR_Manager 上配置)");
             else
             {
                 sb.AppendLine("  项目设置 改前 " + p.intValue + " → 改后 " + level);

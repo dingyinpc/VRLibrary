@@ -1,3 +1,4 @@
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -254,3 +255,4 @@ public class VRLibraryPerfSweep : MonoBehaviour
 #endif
     }
 }
+#endif

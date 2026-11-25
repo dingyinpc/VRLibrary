@@ -29,3 +29,11 @@ Captures/desktop.png
 # 换真实片时同样只拷文件，不进仓库；StreamingAssets 目录本身的 .meta 照常提交
 Assets/StreamingAssets/*.mp4
 Assets/StreamingAssets/*.mp4.meta
+
+# 停用的旧 SDK 备份、导出工程压缩包与本机工作目录（不入库）
+_disabled_sdk_3.3.0/
+_disabled_pico_platform/
+*.zip
+*.bak
+.workbuddy/
+

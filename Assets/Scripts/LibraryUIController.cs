@@ -26,7 +26,7 @@ public class LibraryUIController : MonoBehaviour
 
     public void OnGuideButton()
     {
-        Show("馆藏导览:两侧为智能书架区,可传送或行走浏览;\n射线悬停书籍查看位置,抓取后详情显示在此处。");
+        Show("馆藏导览:两侧为智能书架区,可传送或行走浏览;\n射线指向书籍扣动扳机即可在阅读面板查看正文。");
     }
 
     public void OnSearchButton()
@@ -34,10 +34,32 @@ public class LibraryUIController : MonoBehaviour
         Show("智能检索:输入书名 / 作者 / 书架编号可模糊查询,\n选中结果即传送到该书面前并高亮。");
     }
 
-    public void OnReturnButton()
+    /// <summary>2026-11-06 演示裁剪:归还服务已整体移除(书不可抓,该功能实际不可用)。</summary>
+
+    // ── 退出图书馆(2026-11-07 加) ─────────────────────────────────
+    // 入口导览屏(InfoCanvas)最下面那颗通栏按钮绑这里。
+    // 两下确认:第一下只在状态栏提示,4 秒内再按一次才真正退出,避免射线误触把演示关掉。
+    const float ExitArmSeconds = 4f;
+    float exitArmedAt = -99f;
+
+    public void OnExitLibraryButton()
     {
-        Show("归还服务:请前往北侧服务台,\n将书籍放入发光感应区即可自动归还。");
+        if (Time.unscaledTime - exitArmedAt > ExitArmSeconds)
+        {
+            exitArmedAt = Time.unscaledTime;
+            Show("再按一次「退出图书馆」即关闭应用\n(4 秒内有效)");
+            Debug.Log("[LibraryUI] 退出待确认:再按一次「退出图书馆」");
+            return;
+        }
+
+        Debug.Log("[LibraryUI] 退出图书馆 → 关闭应用");
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
+
 
     public void ShowBookInfo(LibraryBook book)
     {

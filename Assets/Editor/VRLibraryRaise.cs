@@ -14,12 +14,67 @@ public static class VRLibraryRaise
     const string kRoot = "SmartLibrary";
     const string kReport = "Logs/raise-audit.txt";
 
-    // 现测基线(来自 Logs/floor2-audit.txt、terrace-setup.txt、冒烟)
-    const float FloorTop = 0.028f;      // 一层地砖顶
-    const float Slab2F = 3.005f;        // 二层板面顶
-    const float Ceil = 5.525f;          // 吊顶灯槽最低面
-    const float TargetL1 = 8.00f;       // 目标:一层净高
-    const float TargetL2 = 3.60f;       // 目标:二层净高
+    // 现测基线:**优先从场上活体测量**,测不到才用当初手术时记录的常量。
+    // 常量是 v7.35 拔高**之前**的现状,馆拔高后已经过期 —— 直接拿它算 Δ 会得到"还要再拔一次"的假结论。
+    const float FloorTopConst = 0.028f;   // 手术时:一层地砖顶
+    const float Slab2FConst = 3.005f;     // 手术时:二层板面顶
+    const float CeilConst = 5.525f;       // 手术时:吊顶灯槽最低面
+    const float TargetL1 = 8.00f;         // 目标:一层净高
+    const float TargetL2 = 3.60f;         // 目标:二层净高
+
+    static float _floorTop = -1f, _slab2F = -1f, _ceil = -1f;
+
+    /// <summary>一层地砖顶:由 Floor_Detailed 顶面反推,测不到退手术常量。</summary>
+    static float FloorTop
+    {
+        get
+        {
+            if (_floorTop > 0f) return _floorTop;
+            var f = GameObject.Find("SmartLibrary/Floor_Detailed");
+            var r = f != null ? f.GetComponentInChildren<Renderer>() : null;
+            _floorTop = r != null ? r.bounds.max.y : FloorTopConst;
+            return _floorTop;
+        }
+    }
+
+    /// <summary>二层板面顶:由 Pad_2F_N_E 锚点反推(锚点 = 板面 + 0.045),测不到退手术常量。</summary>
+    static float Slab2F
+    {
+        get
+        {
+            if (_slab2F > 0f) return _slab2F;
+            var a2f = GameObject.Find("SmartLibrary/Pad_2F_N_E");
+            if (a2f != null) { _slab2F = a2f.transform.position.y - 0.045f; return _slab2F; }
+            var gc = GameObject.Find("SmartLibrary/Mezzanine/GlassCorridor");
+            if (gc != null)
+            {
+                var rr = gc.GetComponentInChildren<Renderer>();
+                if (rr != null) { _slab2F = rr.bounds.max.y; return _slab2F; }
+            }
+            _slab2F = Slab2FConst;
+            return _slab2F;
+        }
+    }
+
+    /// <summary>吊顶灯槽最低面:扫 Ceiling 子树的最低面,测不到退手术常量。</summary>
+    static float Ceil
+    {
+        get
+        {
+            if (_ceil > 0f) return _ceil;
+            var root = GameObject.Find(kRoot);
+            float mn = 999f;
+            if (root != null)
+                foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    if (t.name == "Ceiling" || (t.parent != null && t.parent.name == "Ceiling" && t.GetComponent<Renderer>() != null))
+                        mn = Mathf.Min(mn, World(t).min.y);
+            _ceil = mn < 999f ? mn : CeilConst;
+            return _ceil;
+        }
+    }
+
+    /// <summary>清缓存:任何"改场景"菜单动手前调一次,免得拿到动手前读的旧值。</summary>
+    static void ResetBaselines() { _floorTop = _slab2F = _ceil = -1f; }
 
     static StringBuilder sb;
     static int bad;
@@ -138,7 +193,8 @@ public static class VRLibraryRaise
         sb = new StringBuilder();
         bad = 0;
         sb.AppendLine("拔高·分组账(只读)  " + System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-        sb.AppendLine("  现基线:一层地砖顶 0.028 / 二层板面顶 3.005 / 吊顶最低面 5.525");
+        sb.AppendLine(string.Format("  现基线(活体实测):一层地砖顶 {0:0.000} / 二层板面顶 {1:0.000} / 吊顶最低面 {2:0.000}",
+            FloorTop, Slab2F, Ceil));
         sb.AppendLine("  目标(一层 8.00、二层 3.60)⇒ 吊顶层 +2.503、二层组 +1.423");
         sb.AppendLine();
         var root = GameObject.Find(kRoot);
@@ -242,10 +298,12 @@ public static class VRLibraryRaise
         var root = GameObject.Find(kRoot);
         if (root == null) { sb.AppendLine("  !! 找不到场景根 " + kRoot); Flush(); return; }
 
-        float newCeil = FloorTop + TargetL1;      // 8.028
-        float newSlab = newCeil - TargetL2;       // 4.428
-        float dCeil = newCeil - Ceil;             // +2.503
-        float d2F = newSlab - Slab2F;             // +1.423
+        float newCeil = FloorTopConst + TargetL1;   // 8.028
+        float newSlab = newCeil - TargetL2;         // 4.428
+        // ⚠ 这里必须用**手术基线常量**(FloorTopConst/Slab2FConst/CeilConst),不能用活体属性 ——
+        //   活体值在"已经拔过"的场景里已经是新标高,算出的 Δ 会变成 0 或负,位移量全错。
+        float dCeil = newCeil - CeilConst;          // +2.503
+        float d2F = newSlab - Slab2FConst;          // +1.423
         sb.AppendLine(string.Format("  目标:吊顶最低面 {0:0.000}、二层板面顶 {1:0.000}(Δ {2:+0.000;-0.000} / {3:+0.000;-0.000})",
             newCeil, newSlab, dCeil, d2F));
 
@@ -312,9 +370,9 @@ public static class VRLibraryRaise
             //       实测露台屏的两根立柱 ScreenPylon_L/R(底 2.85、顶 6.45)被误判成吊挂件;
             //       它们是**从露台地板上长出来的柱子**,必须跟二层走。
             //   · 或者名字本身就是吊挂件(Pendant/LampCord/LampRing…)且底 ≥ 2.40(排除桌上台灯)
-            bool hang = (b.max.y >= Ceil - 0.40f && b.max.y <= Ceil + 0.70f
-                         && Mathf.Abs(b.min.y - Slab2F) > 0.15f
-                         && Mathf.Abs(b.min.y - FloorTop) > 0.15f)
+            bool hang = (b.max.y >= CeilConst - 0.40f && b.max.y <= CeilConst + 0.70f
+                         && Mathf.Abs(b.min.y - Slab2FConst) > 0.15f
+                         && Mathf.Abs(b.min.y - FloorTopConst) > 0.15f)
                         || SuspendedFixture(t.name, b.min.y);
             bool oldRule = path.Contains("Rivet") || path.StartsWith("Polish1/ArchBeam") || b.min.y >= 5.00f;
             if (oldRule || hang)
@@ -345,7 +403,7 @@ public static class VRLibraryRaise
             c, newCeil, pad, sh));
         BadIf(Mathf.Abs(c - newCeil) > 0.05f, "吊顶灯槽底 = " + newCeil.ToString("0.000") + "±0.05");
         BadIf(Mathf.Abs(pad - (newSlab + 0.028f)) > 0.05f, "二层锚点底 = 新板面顶 + 0.028");
-        float l1 = c - FloorTop, l2 = c - (pad - 0.028f);
+        float l1 = c - FloorTopConst, l2 = c - (pad - 0.028f);
         sb.AppendLine(string.Format("    ⇒ 一层净高 {0:0.00} m(目标 {1:0.00})  二层净高 {2:0.00} m(目标 {3:0.00})", l1, TargetL1, l2, TargetL2));
         BadIf(Mathf.Abs(l1 - TargetL1) > 0.06f || Mathf.Abs(l2 - TargetL2) > 0.06f, "两层净高都到目标");
         sb.AppendLine("    未过 " + bad + " 项");

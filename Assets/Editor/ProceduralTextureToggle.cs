@@ -1,17 +1,19 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// 高科技图书馆 · 程序化贴图系统(高精度 512~1024)
-/// 菜单:VRLibrary/程序化贴图/应用全部 | 移除全部(恢复纯色)
+/// 高科技图书馆 · 程序化贴图系统(高精度 512~1024,导出为支持硬件 ASTC 压缩的 PNG)
+/// 菜单:VRLibrary/程序化贴图/应用全部 | 移除全部(恢复纯色) | 迁移.asset为ASTC压缩PNG
 /// 覆盖:地板(电路板砖)、墙面(饰面板+蚀刻线)、吊顶(穿孔板)、书架(蚀刻横槽)、
 ///       金属(拉丝+斜纹)、铭牌(角标铭牌板)、书脊(纸纹)。
-/// 所有纹理确定性生成(种子固定),保存在 Assets/Materials/T_*.asset。
+/// 所有纹理确定性生成(种子固定),保存在 Assets/Textures/Procedural/*.png。
 /// </summary>
 public static class ProceduralTextureToggle
 {
-    const string kTexDir = "Assets/Materials";
+    const string kTexDir = "Assets/Textures/Procedural";
+    const string kLegacyDir = "Assets/Materials";
 
     struct TexSpec
     {
@@ -47,8 +49,7 @@ public static class ProceduralTextureToggle
             var mat = AssetDatabase.LoadAssetAtPath<Material>(spec.matPath);
             if (mat == null) continue;
             var tex = EnsureTexture(spec.texName, spec.kind);
-            mat.SetTexture("_BaseMap", tex);
-            mat.SetTextureScale("_BaseMap", spec.tiling);
+            SetMatTex(mat, tex, spec.tiling);
             EditorUtility.SetDirty(mat);
             n++;
         }
@@ -56,13 +57,48 @@ public static class ProceduralTextureToggle
             var mat = AssetDatabase.LoadAssetAtPath<Material>(mp);
             if (mat == null) continue;
             var tex = EnsureTexture("T_BookGrain", "book");
-            mat.SetTexture("_BaseMap", tex);
-            mat.SetTextureScale("_BaseMap", new Vector2(1, 1));
+            SetMatTex(mat, tex, new Vector2(1, 1));
             EditorUtility.SetDirty(mat);
             n++;
         }
         AssetDatabase.SaveAssets();
         Debug.Log("[程序化贴图] 高科技风纹理已应用到 " + n + " 个材质(地板电路砖/饰面板墙/穿孔吊顶/蚀刻书架/拉丝金属/角标铭牌/书面纸纹)。");
+    }
+
+    [MenuItem("VRLibrary/程序化贴图/迁移.asset为ASTC压缩PNG(省内存+包体)")]
+    public static void MigrateAssetsToCompressedPng()
+    {
+        ApplyAll();
+        string[] legacyAssets =
+        {
+            "T_TechFloor.asset", "T_TechWall.asset", "T_TechCeil.asset",
+            "T_TechShelf.asset", "T_MetalBrush.asset", "T_TechPlate.asset",
+            "T_BookGrain.asset", "T_FloorNoise.asset", "T_ShelfNoise.asset", "T_WallStreak.asset"
+        };
+        int deleted = 0;
+        foreach (var f in legacyAssets)
+        {
+            string p = kLegacyDir + "/" + f;
+            if (AssetDatabase.LoadAssetAtPath<Object>(p) != null && AssetDatabase.DeleteAsset(p))
+                deleted++;
+        }
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Debug.Log("[程序化贴图] 已迁移并压缩为 Assets/Textures/Procedural/*.png (ASTC_6x6, isReadable=0), 删除未压缩旧 .asset " + deleted + " 个。");
+    }
+
+    static void SetMatTex(Material mat, Texture2D tex, Vector2 tiling)
+    {
+        if (mat.HasProperty("_BaseMap"))
+        {
+            mat.SetTexture("_BaseMap", tex);
+            mat.SetTextureScale("_BaseMap", tiling);
+        }
+        if (mat.HasProperty("_MainTex"))
+        {
+            mat.SetTexture("_MainTex", tex);
+            mat.SetTextureScale("_MainTex", tiling);
+        }
     }
 
     [MenuItem("VRLibrary/程序化贴图/移除全部(恢复纯色)")]
@@ -118,11 +154,66 @@ public static class ProceduralTextureToggle
 
     static Texture2D EnsureTexture(string name, string kind)
     {
-        var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(kTexDir + "/" + name + ".asset");
-        if (existing != null) return existing;
-        var tex = Generate(name, kind);
-        AssetDatabase.CreateAsset(tex, kTexDir + "/" + name + ".asset");
-        return tex;
+        string pngAssetPath = kTexDir + "/" + name + ".png";
+        var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(pngAssetPath);
+        if (existing != null)
+        {
+            ConfigureImporter(pngAssetPath);
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(pngAssetPath);
+        }
+
+        // 优先从旧的 .asset 拷贝原始像素(保证 100% 像素零差异),找不到再确定性生成
+        Texture2D tex = null;
+        string legacyAssetPath = kLegacyDir + "/" + name + ".asset";
+        var legacyTex = AssetDatabase.LoadAssetAtPath<Texture2D>(legacyAssetPath);
+        if (legacyTex != null && legacyTex.isReadable)
+        {
+            tex = new Texture2D(legacyTex.width, legacyTex.height, TextureFormat.RGBA32, false);
+            tex.SetPixels32(legacyTex.GetPixels32());
+            tex.Apply();
+        }
+        else
+        {
+            tex = Generate(name, kind);
+        }
+        byte[] png = tex.EncodeToPNG();
+        Object.DestroyImmediate(tex);
+
+        string absDir = Path.Combine(Path.GetDirectoryName(Application.dataPath), kTexDir.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(absDir);
+        string absFile = Path.Combine(absDir, name + ".png");
+        File.WriteAllBytes(absFile, png);
+
+        AssetDatabase.ImportAsset(pngAssetPath, ImportAssetOptions.ForceUpdate);
+        ConfigureImporter(pngAssetPath);
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(pngAssetPath);
+    }
+
+    static void ConfigureImporter(string assetPath)
+    {
+        var ti = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+        if (ti == null) return;
+        bool dirty = false;
+        if (ti.textureType != TextureImporterType.Default) { ti.textureType = TextureImporterType.Default; dirty = true; }
+        if (!ti.sRGBTexture) { ti.sRGBTexture = true; dirty = true; }
+        if (!ti.mipmapEnabled) { ti.mipmapEnabled = true; dirty = true; }
+        if (ti.filterMode != FilterMode.Trilinear) { ti.filterMode = FilterMode.Trilinear; dirty = true; }
+        if (ti.anisoLevel != 8) { ti.anisoLevel = 8; dirty = true; }
+        if (ti.wrapMode != TextureWrapMode.Repeat) { ti.wrapMode = TextureWrapMode.Repeat; dirty = true; }
+        if (ti.isReadable) { ti.isReadable = false; dirty = true; }
+        if (ti.maxTextureSize != 1024) { ti.maxTextureSize = 1024; dirty = true; }
+        if (ti.textureCompression != TextureImporterCompression.Compressed) { ti.textureCompression = TextureImporterCompression.Compressed; dirty = true; }
+
+        var and = ti.GetPlatformTextureSettings("Android");
+        if (!and.overridden || and.maxTextureSize != 1024 || and.format != TextureImporterFormat.ASTC_6x6)
+        {
+            and.overridden = true;
+            and.maxTextureSize = 1024;
+            and.format = TextureImporterFormat.ASTC_6x6;
+            ti.SetPlatformTextureSettings(and);
+            dirty = true;
+        }
+        if (dirty) ti.SaveAndReimport();
     }
 
     static Texture2D NewTex(int size)

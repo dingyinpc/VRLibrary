@@ -71,8 +71,12 @@ public class VRLibrarySmoke : MonoBehaviour
             else
             {
                 cine.Enter();
-                cine.OnAckNotice();
-                cine.Leave();                 // 立刻解锁并把四块面板收干净,只留人在座位上
+                cine.OnAckNotice();           // 目录自动展开:先抓一张"座位视角的目录"
+                yield return new WaitForSeconds(0.8f);
+                yield return new WaitForEndOfFrame();
+                ScreenCapture.CaptureScreenshot("Captures/cinema-eye-catalog.png");
+                Line("预览:座位视角目录已抓 → Captures/cinema-eye-catalog.png");
+                cine.Leave();                 // 立刻解锁并把三块面板收干净,只留人在座位上
                 yield return new WaitForSeconds(0.5f);
             }
 
@@ -86,7 +90,7 @@ public class VRLibrarySmoke : MonoBehaviour
                 Line("预览:信息卡(含解码行)已抓 → Captures/cinema-decode-card.png  " + sc.DecodeLine);
             }
 
-            sc.PlayFile("film1.mp4", () => { if (sc.infoCard != null) sc.infoCard.SetActive(false); });
+            sc.PlayFile(f0 != null ? f0.fileName : "", () => { if (sc.infoCard != null) sc.infoCard.SetActive(false); });
             yield return new WaitForSeconds(4f);
             Line("预览:出帧=" + sc.Decoding + " 帧号=" + sc.FrameIndex + " RT平均亮度="
                  + sc.AverageLuma().ToString("0.000") + " 画面 " + sc.FaceWidth.ToString("0.00") + "×"
@@ -220,7 +224,11 @@ public class VRLibrarySmoke : MonoBehaviour
         if (refreshM != null) refreshM.Invoke(r, new object[] { false });
         string pHome = r.pageText != null ? r.pageText.text : "";
         r.NextPage(); r.NextPage();
+        yield return new WaitForSeconds(0.35f);
         string p1 = r.pageText != null ? r.pageText.text : "";
+        string bodyAfterFlip = r.contentText != null ? r.contentText.text : "";
+        var pagesArr = typeof(BookReader).GetField("pages", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(r) as string[];
+        bool flipSyncOk = pagesArr != null && pagesArr.Length >= 3 && bodyAfterFlip == pagesArr[2];
         r.Close();
         bool closed = !r.panelRoot.activeSelf;
         int bmAfter = BookReader.Bookmarks.Count;
@@ -228,7 +236,7 @@ public class VRLibrarySmoke : MonoBehaviour
         Check("阅读面板", opened && body.Length > 20 && closed,
             "《" + book.title + "》面板=" + opened + " 正文" + body.Length + "字 页码\"" + p0 + "\"→\"" + p1
             + "\" 关合=" + closed + " 书签 " + bmBefore + "→" + bmAfter);
-        Check("阅读面板·翻页", pHome != p1, "首页\"" + pHome + "\"→前进两页\"" + p1 + "\"(末页书签恢复不再误报)");
+        Check("阅读面板·翻页", pHome != p1 && flipSyncOk, "首页\"" + pHome + "\"→连点前进两页\"" + p1 + "\" 正文同步=" + flipSyncOk);
 
         // 2026-09-28 用户报"点书点不开":这里走一次**真·射线选中**(XRInteractionManager.SelectEnter),
         // 把"输入/层遮罩"与"逻辑"分开定位 —— 抓取走的是手碰碰撞体,不需要射线,所以以前能抓不代表射线打得中。
@@ -474,6 +482,34 @@ public class VRLibrarySmoke : MonoBehaviour
             "Origin 移动 " + moved.ToString("F2") + " m;最近目标《" + (target != null ? target.title : "?")
             + "》距离 " + best.ToString("F2") + " m");
         Check("传送后有发光标记", GameObject.Find("SearchMarker") != null, "SearchMarker 存在(10 秒后自动销毁)");
+
+        // 跨层检索回归检查:找一本二层书搜索传送,验证 Rig Y 抬到二层(≈4.43)而非留在 0
+        LibraryBook book2F = null;
+        foreach (var b in FindObjectsOfType<LibraryBook>())
+            if (b.transform.position.y > 2.5f && !string.IsNullOrEmpty(b.title)) { book2F = b; break; }
+        if (book2F != null)
+        {
+            sc.Show();
+            sc.inputField.text = book2F.title;
+            sc.DoSearch();
+            Button btn2F = null;
+            foreach (var go in sc.resultPool)
+                if (go != null && go.activeSelf) { btn2F = go.GetComponent<Button>(); break; }
+            if (btn2F != null) btn2F.onClick.Invoke();
+            yield return new WaitForSeconds(0.2f);
+            float y2F = o.position.y;
+            sc.Show();
+            sc.inputField.text = "实现方案";
+            sc.DoSearch();
+            Button btn1F = null;
+            foreach (var go in sc.resultPool)
+                if (go != null && go.activeSelf) { btn1F = go.GetComponent<Button>(); break; }
+            if (btn1F != null) btn1F.onClick.Invoke();
+            yield return new WaitForSeconds(0.2f);
+            float y1F = o.position.y;
+            Check("跨层检索传送高度(1F↔2F)", y2F > 4.0f && y1F < 0.5f,
+                "二层书《" + book2F.title + "》落点 y=" + y2F.ToString("0.00") + "m → 返回一层 y=" + y1F.ToString("0.00") + "m");
+        }
     }
 
     IEnumerator TestKioskTeleport()
@@ -648,7 +684,7 @@ public class VRLibrarySmoke : MonoBehaviour
 
     /// <summary>
     /// 星空观影全链路,**按用户给的操作顺序实走一遍**:进入观影区 → 开目录 → 开须知 → 关须知 →
-    /// 关目录 → 再开目录 → 再开须知 → 选片观看 → 跳 5 秒 → 暂停 → 关影片 → 离开观影区 → 回到图书馆。
+    /// 关目录 → 再开目录 → 再开须知 → 选片观看 → 跳 5 秒 → 暂停 → 关影片 → 验硬锁站位 → 回一层大厅。
     /// 放在最后一项:它会锁站位、改 PlayerPrefs,跑完自己复原。
     /// </summary>
     IEnumerator TestCinema()
@@ -770,38 +806,29 @@ public class VRLibrarySmoke : MonoBehaviour
         c.OnCycleSpeed(); c.OnCycleSpeed();
 
         // ⑬ 关闭影片(只停片,人还在观影态)
+        c.OnCycleSpeed(); yield return new WaitForSeconds(0.05f); // 故意停在非 1.0× 测试关片复位
         c.OnStopFilm(); yield return new WaitForSeconds(0.4f);
         bool standby = sc != null && sc.infoCard != null && sc.infoCard.activeSelf
                        && sc.cardTitle != null && sc.cardTitle.text.Contains("未选片");
+        bool speedResetOk = c.speedLabel == null || c.speedLabel.text.Contains("1.0×");
         Check("观影·关闭影片退回待机卡", c.IsSeated && sc != null && !sc.IsPlayingNow && standby
-              && c.CurrentFilm < 0,
+              && c.CurrentFilm < 0 && speedResetOk,
             "仍在观影态=" + c.IsSeated + " 已停播=" + (sc != null && !sc.IsPlayingNow)
-            + " 待机卡=" + standby + " 片号清成=" + c.CurrentFilm);
+            + " 待机卡=" + standby + " 片号清成=" + c.CurrentFilm + " 倍速复位=" + speedResetOk);
 
-        // ⑭ 推摇杆 → 弹离座确认(改成读"摇杆意图",不再读位移;测试直接调触发函数)
-        c.OpenLeavePrompt();
-        yield return new WaitForSeconds(0.15f);
-        Check("观影·弹离座确认时目录让位", c.LeaveVisible && !c.CatalogVisible && c.IsSeated,
-            "离座面板=" + c.LeaveVisible + " 目录让位=" + !c.CatalogVisible + " 仍在座=" + c.IsSeated);
-
-        // ⑭b 关键回归:离座确认挂着的时候选片,4 秒后**仍然必须**自动开播。
-        //     旧代码把开播计时器写在 prompting 的早退之后,一弹窗就永远不播(用户实测的"播放不了")
-        c.OnSelectFilm0();
-        yield return new WaitForSeconds(c.cardHoldSeconds + 2.5f);
-        Check("观影·离座确认挡不住自动开播", c.screen != null && c.screen.Decoding,
-            "弹窗期间选片后仍在播=" + (c.screen != null && c.screen.Decoding)
-            + "(旧版这条必挂:计时器在 prompting 早退之后)");
-        c.OnStaySeated(); yield return new WaitForSeconds(0.1f);
-        Check("观影·选择留下会回位", !c.LeaveVisible && c.IsSeated
-              && Vector3.Distance(rig.position, c.seat.position) < 0.1f,
-            "面板已收=" + !c.LeaveVisible + " 在座=" + c.IsSeated);
-
-        // ⑮ 位移超过 teleportDistance 当作"已经被传走" → 直接就地解锁,不弹确认
-        rig.position += new Vector3(3.2f, 0f, 0f);
-        yield return new WaitForSeconds(0.2f);
-        Check("观影·大位移按传送处理(不弹窗、就地解锁)",
-              !c.IsSeated && !c.LeaveVisible && !SprintController.suppressed,
-            "在座=" + c.IsSeated + " 没误弹离座=" + !c.LeaveVisible + " 加速已恢复=" + !SprintController.suppressed);
+        // ⑭ 硬锁站位:推摇杆/瞬移都不再弹「留下继续看 / 离座走动」,大位移会被下一帧拽回座位。
+        //     2026-10-19 定案:观影态强制限制自由走动,不提供任何就地解锁入口。
+        var seatPos = c.seat.position;
+        rig.position += new Vector3(3.2f, 0f, 1.4f);
+        yield return new WaitForSeconds(0.25f);
+        float snap = Vector3.Distance(rig.position, seatPos);
+        bool leaveGone = true;
+        foreach (var t in c.GetComponentsInChildren<Transform>(true))
+            if (t.name == "LeavePanel" || t.name == "Exit") leaveGone = false;
+        Check("观影·硬锁站位(大位移拽回,无离座/退出入口)",
+              c.IsSeated && snap < 0.1f && leaveGone,
+            "在座=" + c.IsSeated + " 位移后距座位=" + snap.ToString("0.000") + " m"
+            + " 离座/退出入口=" + (leaveGone ? "已移除" : "!! 仍在"));
 
         // ⑯ 面前那颗「回一层大厅」真的把人送回图书馆(不用转身打身后那块板)
         var dest = c.lobbyTeleporter != null && c.lobbyTeleporter.destination != null
@@ -831,12 +858,7 @@ public class VRLibrarySmoke : MonoBehaviour
                        : "已解析到移动 Provider:" + (sp.moveProviderBehaviour != null ? sp.moveProviderBehaviour.GetType().Name : "null")
                          + " ×" + sp.sprintMultiplier);
 
-        var sock = FindObjectOfType<BookReturnSocket>();
-        bool sockOk = sock != null
-                      && sock.GetComponent<UnityEngine.XR.Interaction.Toolkit.XRSocketInteractor>() != null;
-        Check("归还口接线", sockOk,
-            sock == null ? "没有 BookReturnSocket"
-                         : "XRSocketInteractor " + (sock.GetComponent<UnityEngine.XR.Interaction.Toolkit.XRSocketInteractor>() != null ? "在" : "缺失(Start() 会抛 NRE)"));
+        // 2026-11-06 演示裁剪:归还服务已整体移除(书不可抓),不再检查归还口接线。
 
         var ui = LibraryUIController.Instance;
         if (ui == null || ui.statusText == null)
@@ -876,6 +898,60 @@ public class VRLibrarySmoke : MonoBehaviour
         Check("二层传送锚点", up >= 6 && upBad == 0,
             "锚点共 " + anchors.Length + " 个(一层 " + (anchors.Length - up) + " / 二层 " + up + "),"
             + "二层缺碰撞体或未激活 " + upBad + " 个");
+
+        // 露台/二层的"面板标高"(2026-10-05 新增):v7.35 的整馆拔高是"给带 Renderer 的对象加 1.423",
+        // 于是**纯空物体与 UI Canvas 全被留在旧标高** —— 装三块观影面板的 CinemaController 就是空物体,
+        // 面板因此比眼高低 1.42 m(约在小腿高度),玩家看到的是"面板飘得很远、人显得特别高";
+        // TerraceSign 更惨,落到二层板面**以下**,直接埋进楼板里。
+        // 判据必须是"面板中心落在座位眼位附近",而不是"物体在不在" —— 后者在坏掉时照样全绿。
+        var cin = FindObjectOfType<TerraceCinema>();
+        if (cin == null || cin.seat == null)
+        {
+            Fail("露台面板标高(面板应落在眼位高度)", "场上没有 TerraceCinema 或没接 seat");
+        }
+        else
+        {
+            float eye = cin.seat.position.y + 1.60f;
+            var pnames = new[] { "目录", "播控", "须知" };
+            var pgos = new GameObject[] { cin.catalogPanel, cin.transportPanel, cin.noticePanel };
+            int pbad = 0;
+            var plines = new List<string>();
+            for (int i = 0; i < pgos.Length; i++)
+            {
+                if (pgos[i] == null) { pbad++; plines.Add(pnames[i] + "=缺"); continue; }
+                float d = pgos[i].transform.position.y - eye;
+                bool ok = d > -0.60f && d < 0.40f;
+                if (!ok) pbad++;
+                plines.Add(pnames[i] + "=" + (d >= 0f ? "+" : "") + d.ToString("0.00") + "m" + (ok ? "" : "!!"));
+            }
+            // 目录必须沿"座位→银幕"方向摆在正前方,而不是偏在一边 / 跟随头部朝向
+            float catAlong = 0f, catLateral = 0f;
+            bool catFront = false;
+            if (cin.catalogPanel != null)
+            {
+                var f = cin.seat.forward; f.y = 0f; f.Normalize();
+                var to = cin.catalogPanel.transform.position - cin.seat.position; to.y = 0f;
+                catAlong = Vector3.Dot(to, f);
+                catLateral = Vector3.Dot(to, cin.seat.right);
+                catFront = catAlong > 0.5f && Mathf.Abs(catLateral) < 0.05f;
+                if (!catFront) pbad++;
+            }
+            // 楼梯口指示牌:应在二层板面顶 + 1.35。两层楼板都是 4.423,座位垫面比板面顶高 0.045,减回去即板面顶。
+            var sign = GameObject.Find("SmartLibrary/Mezzanine/TerraceSign");
+            float signD = 0f; bool signOk = true;
+            if (sign == null) signOk = false;
+            else
+            {
+                signD = sign.transform.position.y - ((cin.seat.position.y - 0.045f) + 1.35f);
+                signOk = Mathf.Abs(signD) < 0.20f;
+            }
+            Check("露台面板标高与目录朝向", pbad == 0 && signOk,
+                "眼位 y=" + eye.ToString("0.00") + "(座位 " + cin.seat.position.y.ToString("0.00") + " + 1.60)"
+                + " 各面板与眼位差 " + string.Join(" ", plines.ToArray())
+                + " | 目录沿座位→银幕 " + catAlong.ToString("0.00") + " m / 横向 "
+                + catLateral.ToString("+0.00;-0.00;0.00") + " m" + (catFront ? " ✓" : " !!")
+                + " | 楼梯口指示牌偏差 " + signD.ToString("0.00") + " m" + (signOk ? "" : " !!"));
+        }
     }
 
     // ── HUD ────────────────────────────────────────────────────────
@@ -886,7 +962,9 @@ public class VRLibrarySmoke : MonoBehaviour
     IEnumerator TestHud()
     {
         var hud = LibraryHud.Instance;
-        if (hud == null) { Fail("HUD", "场上没有 LibraryHud 实例 → 跑 VRLibrary/装小地图与菜单"); yield break; }
+        // 2026-11-06 演示裁剪:HUD 已整块禁用 → 本条按"跳过"处理,不算失败。
+        // (要恢复就把场景里 LibraryHud 物体重新启用,再跑一次冒烟)
+        if (hud == null) { Line("  HUD:已禁用(演示裁剪),跳过"); yield break; }
 
         var cv = hud.GetComponent<Canvas>();
         var scaler = hud.GetComponent<CanvasScaler>();

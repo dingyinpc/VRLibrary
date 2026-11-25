@@ -63,7 +63,9 @@ public class LibraryBook : MonoBehaviour
 
     private void OnHoverEntered(HoverEnterEventArgs args)
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         Debug.Log("[Book] 悬停 ← " + Who(args.interactorObject) + " 《" + title + "》");
+#endif
     }
 
     /// <summary>点一下 = 看这本书(走 Select)。</summary>
@@ -100,6 +102,7 @@ public class LibraryBook : MonoBehaviour
             var found = FindObjectOfType<BookReader>(true);
             if (found == null) { Debug.LogWarning("[LibraryBook] 场景中没有 BookReader 组件,无法打开阅读面板"); return; }
             BookReader.Instance = found;   // 公开静态字段,直接接管
+            reader = found;
         }
         reader.Open(this);
     }

@@ -6,13 +6,15 @@ using Unity.XR.CoreUtils;
 /// <summary>
 /// 智能图书馆 · 星空露台观影模式控制器。
 ///
-/// 四条已定案的前提(2026-09-21 与用户确认):
+/// 四条已定案的前提(2026-10-19 修订):
 ///   ① 目录内容读 `Assets/Resources/filmography.json`(片名/文件名/时长/简介/类型),换片单只改那个文件;
-///   ② "座位"= 观影模式锁站位:不放实体椅子,进入后把 XR Rig 钉在 `seat` 上(头可以自由转,身体不动),
-///      一旦检测到移动(位置被推走)就弹"要离座吗",选离座才真正解锁;
-///   ③ 按键:右手 Grip 按住 = 目录,左手 Grip 按住 = 播控面板(暂停 / 倍速 / 后退 5 秒 / 前进 5 秒 /
-///      跳过 / 关闭影片 / 退出),观影区内禁用加速(SprintController.suppressed),退出观影态自动恢复原义;
-///      目录另有 OpenCatalog()/CloseCatalog() 可编程开关(冒烟测试与"点完自动收起"都靠它);
+///   ② "座位"= 观影模式**硬锁站位**:不放实体椅子,进入后把 XR Rig 逐帧钉在 `seat` 上
+///      (头可以自由转,身体不动);**不再提供「留下继续看 / 离座走动」这类确认**,
+///      摇杆推走或瞬移都会被下一帧拽回座位 —— 想离开只能按播控面板上的「回一层大厅」;
+///   ③ 按键:右手 Grip 按一下 = 目录,左手 Grip 按一下 = 播控面板(暂停 / 倍速 / 后退 5 秒 /
+///      前进 5 秒 / 跳过 / 关闭影片 / 回一层大厅),观影区内禁用加速(SprintController.suppressed),
+///      回到一层后自动恢复原义;目录另有 OpenCatalog()/CloseCatalog() 可编程开关;
+///      **目录的位置以"座位→银幕"方向为前**,固定摆在人物正前方,不跟随头部朝向;
 ///   ④ 观影院须知一次性确认:PlayerPrefs 记 `ackKey`,没确认前不给进观影态;确认之后仍可从目录底部
 ///      那颗「观影须知」回看(OnShowNotice),回看不再卡流程。
 ///
@@ -34,55 +36,49 @@ public class TerraceCinema : MonoBehaviour
     public GameObject noticePanel;
     public GameObject catalogPanel;
     public GameObject transportPanel;
-    public GameObject leavePanel;
 
     [Header("预建按钮")]
     public Button[] filmSlots = new Button[6];
     public Text[] filmLabels = new Text[6];
     public Button ackButton;
     public Button noticeButton;        // 目录里那颗「观影须知」:确认过之后还能回看
-    public Button stayButton;
-    public Button leaveButton;
     public Button pauseButton;
     public Button speedButton;
     public Button skipButton;
     public Button seekBackButton;
     public Button seekFwdButton;
-    public Button stopButton;          // 关闭影片(退回待机卡),不等于退出观影
-    public Button exitButton;
-    public Button lobbyButton;         // 回一层大厅:就地解锁 + 传送回去(面前就能按,不用转身打背后那块板)
+    public Button stopButton;          // 关闭影片(退回待机卡),不解锁站位
+    public Button lobbyButton;         // 唯一的离开方式:解锁 + 传送回一层大厅
     public Text pauseLabel;
     public Text speedLabel;
     public Text nowPlayingLabel;
 
     [Header("参数")]
     public string ackKey = "cinema.notice.ack.v1";
-    [Tooltip("钉回座位的容差:离座超过这个距离才写回位置(不是「是否想走」的判据)")]
-    public float pinEpsilon = 0.05f;
-    [Tooltip("左摇杆推到多大算「想走」(0~1)。站姿晃动与追踪漂移通常远小于这个值")]
-    public float moveIntent = 0.35f;
-    [Tooltip("摇杆要连续推多久才弹离座确认(秒)")]
-    public float moveHoldSeconds = 0.25f;
-    [Tooltip("瞬移级别的大位移直接当作已经离座(按了回程按钮 / 又被传走)")]
-    public float teleportDistance = 2.5f;
+    [Tooltip("钉回座位的容差:超过这个距离就写回位置。观影态下不提供任何离座确认")]
+    public float pinEpsilon = 0.01f;
     [Tooltip("选完片到自动开播的停顿(秒),让屏上的影片信息被看到")]
     public float cardHoldSeconds = 4f;
     [Tooltip("「前进 / 后退」一颗跳多少秒")]
     public float seekSeconds = 5f;
 
     static readonly float[] Speeds = { 1f, 1.5f, 2f, 0.5f };
+    static readonly string[] GripControls = { "gripPressed", "grip" };
 
     int speedIndex;
     int current = -1;
     bool seated;
     bool paused;
+    bool ackConfirmed;
     bool catalogOpen;            // 目录:按一下右手 Grip 翻转,开了就一直在(不再要求按住)
     bool transportOpen;          // 播控:同上,左手 Grip
     bool gripRWasDown;
     bool gripLWasDown;
-    bool prompting;
-    float moveHold;
     float cardUntil;
+    Vector3 pinnedRigPos;
+
+    readonly List<KeyValuePair<UnityEngine.XR.Interaction.Toolkit.LocomotionProvider, bool>> suppressedLocomotion
+        = new List<KeyValuePair<UnityEngine.XR.Interaction.Toolkit.LocomotionProvider, bool>>();
 
     public bool IsSeated { get { return seated; } }
 
@@ -91,12 +87,20 @@ public class TerraceCinema : MonoBehaviour
         SetActive(noticePanel, false);
         SetActive(catalogPanel, false);
         SetActive(transportPanel, false);
-        SetActive(leavePanel, false);
-        prompting = false;
         catalogOpen = transportOpen = false;
         gripRWasDown = gripLWasDown = false;
-        moveHold = 0f;
         cardUntil = 0f;
+        ackConfirmed = PlayerPrefs.HasKey(ackKey);
+    }
+
+    void OnDisable()
+    {
+        if (seated)
+        {
+            seated = false;
+            SprintController.suppressed = false;
+            RestoreLocomotion();
+        }
     }
 
     void Start()
@@ -134,39 +138,55 @@ public class TerraceCinema : MonoBehaviour
             return;
         }
         seated = true;
-        prompting = false;
-        moveHold = 0f;
         SprintController.suppressed = true;              // 观影区内不加速
+        SuppressLocomotion();
+        ackConfirmed = PlayerPrefs.HasKey(ackKey);
         PinToSeat(true);
-        if (!PlayerPrefs.HasKey(ackKey))
+        if (!ackConfirmed)
         {
             SetActive(noticePanel, true);                // 没确认过 → 先弹须知
-            catalogOpen = false;
+            catalogOpen = transportOpen = false;
             Debug.Log("[Cinema] 进入观影态,等待须知确认");
         }
         else
         {
             SetActive(noticePanel, false);
             catalogOpen = true;                          // 直接给目录,伸手就能点
-            Debug.Log("[Cinema] 进入观影态,目录已展开");
+            transportOpen = false;
+            Debug.Log("[Cinema] 进入观影态,目录已展开(座位正前方 / 朝向银幕)");
         }
         ApplyPanels();
     }
 
-    /// <summary>解锁站位。**就地**解锁,不回钉座位:否则玩家刚按屏上的回程按钮传送走,
-    /// 下一帧就被拽回露台(PinToSeat 与"我已经走了"这两件事互相矛盾)。</summary>
+    /// <summary>
+    /// 退出观影态。**只有「回一层大厅」会调它**:先解锁再传送,否则下一帧 LateUpdate
+    /// 又会把人钉回座位。观影期间不提供任何就地解锁/离座入口。
+    /// </summary>
     public void Leave()
     {
+        // 2026-11-07:离开影院 = 停止放映(视频 + 音轨 + 信息卡回待机)。
+        // 视频一停 IsPlayingNow 变 false,背景乐 LibraryBgm 会自动淡回 0.08。
+        if (screen != null)
+        {
+            screen.StopFilm();
+            screen.SetPlaybackSpeed(1f);
+            Debug.Log("[Cinema] 离开影院 → 已停止放映;背景乐自动恢复");
+        }
+
         seated = false;
         paused = false;
-        prompting = false;
+        speedIndex = 0;
+        current = -1;
         catalogOpen = transportOpen = false;
+        if (pauseLabel != null) pauseLabel.text = "暂停";
+        if (speedLabel != null) speedLabel.text = "倍速 1.0×";
+        if (nowPlayingLabel != null) nowPlayingLabel.text = "正在选映：(无)";
         SprintController.suppressed = false;             // 恢复加速原义
+        RestoreLocomotion();
         SetActive(noticePanel, false);
         SetActive(catalogPanel, false);
         SetActive(transportPanel, false);
-        SetActive(leavePanel, false);
-        Debug.Log("[Cinema] 退出观影态,就地恢复日常交互");
+        Debug.Log("[Cinema] 退出观影态");
     }
 
     // ------------------------------------------------------------ 每帧
@@ -175,59 +195,52 @@ public class TerraceCinema : MonoBehaviour
     {
         if (!seated) return;
 
-        // **开播计时器必须放在任何早退之前**:上一版它在 prompting 的早退之后,
-        // 于是"离座确认"一挡,选完的片子就永远不开播(用户实测的"播放不了"就是这条)
+        // **开播计时器必须放在任何早退之前**:上一版它排在"离座确认"的早退之后,
+        // 一弹窗选完的片子就永远不开播(用户实测的"播放不了"就是这条)。
+        // 现在离座流程已删除,但这条顺序仍然保留,避免以后再插模态逻辑时重蹈覆辙。
         if (cardUntil > 0f && Time.time >= cardUntil)
         {
             cardUntil = 0f;
             if (screen != null) screen.StartPlayback();
         }
 
-        if (!PlayerPrefs.HasKey(ackKey)) return;         // 须知没确认前是模态的,只允许钉人
+        if (!ackConfirmed) return;         // 须知没确认前是模态的,只允许钉人
 
         // Grip:**按下那一帧翻转**,开了就一直显示。上一版是"按住才显示",
         // 意味着要用同一只手一直捏着 Grip 再去抠扳机点按钮 —— 用户实测"目录很难正常呼出"
+        // 目录与播控互斥:目录现在摆在正前方,同时开播控会叠在一起
         bool gripR = ReadGrip(true), gripL = ReadGrip(false);
-        if (gripR && !gripRWasDown) catalogOpen = !catalogOpen;
-        if (gripL && !gripLWasDown) transportOpen = !transportOpen;
-        gripRWasDown = gripR; gripLWasDown = gripL;
-
-        // 离座确认:读**摇杆意图**,不读位移。站姿晃动与追踪漂移轻松就超过几厘米,
-        // 用位移判"他想走"会一天弹八百次,而且每次弹窗都顺手把目录收掉
-        if (!prompting)
+        if (gripR && !gripRWasDown)
         {
-            float mv = ReadMoveAxis();
-            if (mv > moveIntent)
-            {
-                moveHold += Time.deltaTime;
-                if (moveHold >= moveHoldSeconds) OpenLeavePrompt();
-            }
-            else moveHold = 0f;
+            catalogOpen = !catalogOpen;
+            if (catalogOpen) transportOpen = false;
         }
+        if (gripL && !gripLWasDown)
+        {
+            transportOpen = !transportOpen;
+            if (transportOpen) catalogOpen = false;
+        }
+        gripRWasDown = gripR; gripLWasDown = gripL;
 
         ApplyPanels();
     }
 
-    /// <summary>面板可见性只由这一处算:开了才显示,须知/离座弹窗在场时让位。</summary>
+    /// <summary>面板可见性只由这一处算:开了才显示,须知在场时让位。</summary>
     void ApplyPanels()
     {
         bool noticeOn = noticePanel != null && noticePanel.activeSelf;
-        SetActive(catalogPanel, catalogOpen && !noticeOn && !prompting);
-        SetActive(transportPanel, transportOpen && !noticeOn && !prompting);
+        SetActive(catalogPanel, catalogOpen && !noticeOn);
+        SetActive(transportPanel, transportOpen && !noticeOn);
     }
 
     /// <summary>
-    /// 锁站位。**只负责钉人**;是否"想走"由 Update 里的摇杆意图判。
-    /// 位移只留一个传送级兜底(&gt; <see cref="teleportDistance"/> 视为人已经被传走,直接就地解锁),
-    /// 早先版本用 6 cm 位移当触发条件,站着不动就会误弹。
+    /// 硬锁站位:只要还在观影态,每帧都把 XR Rig 拉回座位。
+    /// 不判"想不想走"、不做大位移解锁 —— 摇杆、瞬移、房间尺度走动统统会被下一帧拽回来。
+    /// 朝向不强制:玩家仍可转头/转身环视,但目录与播控固定在座位上(以座位→银幕为前)。
     /// </summary>
     void LateUpdate()
     {
-        if (!seated || seat == null || origin == null) return;
-
-        var p = origin.transform.position;
-        float d = Vector3.Distance(new Vector3(p.x, 0f, p.z), new Vector3(seat.position.x, 0f, seat.position.z));
-        if (d > teleportDistance) { Leave(); return; }   // 是传送走的,不是"想离座",别弹窗
+        if (!seated) return;
         PinToSeat(false);
     }
 
@@ -235,11 +248,57 @@ public class TerraceCinema : MonoBehaviour
     {
         if (seat == null || origin == null) return;
         var t = origin.transform;
-        if (hard || Vector3.Distance(t.position, seat.position) > pinEpsilon)
+        if (hard)
         {
-            t.position = seat.position;
-            t.rotation = seat.rotation;
+            var cam = origin.Camera != null ? origin.Camera.transform : null;
+            if (cam != null)
+            {
+                float delta = Mathf.DeltaAngle(cam.eulerAngles.y, seat.eulerAngles.y);
+                t.Rotate(0f, delta, 0f);
+                Vector3 camOff = cam.position - t.position;
+                camOff.y = 0f;
+                pinnedRigPos = new Vector3(seat.position.x - camOff.x, seat.position.y, seat.position.z - camOff.z);
+            }
+            else
+            {
+                t.rotation = seat.rotation;
+                pinnedRigPos = seat.position;
+            }
+            t.position = pinnedRigPos;
+            return;
         }
+        if (Vector3.Distance(t.position, pinnedRigPos) > pinEpsilon)
+        {
+            t.position = pinnedRigPos;
+        }
+    }
+
+    void SuppressLocomotion()
+    {
+        RestoreLocomotion();
+        if (origin == null) return;
+        var root = origin.transform.parent != null ? origin.transform.parent : origin.transform;
+        foreach (var lp in root.GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.LocomotionProvider>(true))
+        {
+            if (lp == null) continue;
+            string n = lp.GetType().Name;
+            // 只停移动/传送,保留 Turn 以便观影时可微调或自由转头
+            if (n.Contains("Move") || n.Contains("Teleport"))
+            {
+                suppressedLocomotion.Add(new KeyValuePair<UnityEngine.XR.Interaction.Toolkit.LocomotionProvider, bool>(lp, lp.enabled));
+                lp.enabled = false;
+            }
+        }
+    }
+
+    void RestoreLocomotion()
+    {
+        for (int i = 0; i < suppressedLocomotion.Count; i++)
+        {
+            var kv = suppressedLocomotion[i];
+            if (kv.Key != null) kv.Key.enabled = kv.Value;
+        }
+        suppressedLocomotion.Clear();
     }
 
     // ------------------------------------------------------------ 按钮动作(都绑在预建按钮上)
@@ -248,6 +307,7 @@ public class TerraceCinema : MonoBehaviour
     {
         PlayerPrefs.SetInt(ackKey, 1);
         PlayerPrefs.Save();
+        ackConfirmed = true;
         SetActive(noticePanel, false);
         OpenCatalog();
         Debug.Log("[Cinema] 须知已确认,目录展开");
@@ -263,46 +323,21 @@ public class TerraceCinema : MonoBehaviour
         Debug.Log("[Cinema] 回看观影须知");
     }
 
-    /// <summary>展开目录(右手 Grip 按一下也是这个效果)。</summary>
-    public void OpenCatalog() { catalogOpen = true; ApplyPanels(); }
+    /// <summary>展开目录(右手 Grip 按一下也是这个效果)。目录与播控互斥。</summary>
+    public void OpenCatalog() { catalogOpen = true; transportOpen = false; ApplyPanels(); }
 
     /// <summary>收起目录。</summary>
     public void CloseCatalog() { catalogOpen = false; ApplyPanels(); }
 
-    /// <summary>弹离座确认。摇杆推够久会调它,冒烟测试也直接调它来验后续状态。</summary>
-    public void OpenLeavePrompt()
-    {
-        if (prompting) return;
-        prompting = true;
-        moveHold = 0f;
-        catalogOpen = false;
-        transportOpen = false;
-        SetActive(leavePanel, true);
-        ApplyPanels();
-        Debug.Log("[Cinema] 检测到推摇杆 → 弹离座确认");
-    }
-
-    public void OnStaySeated()
-    {
-        prompting = false;
-        SetActive(leavePanel, false);
-        PinToSeat(true);
-        ApplyPanels();
-        Debug.Log("[Cinema] 选择留下,继续观影");
-    }
-
-    public void OnLeaveSeat() { Leave(); }
-
     /// <summary>
-    /// 播控面板上那颗「回一层大厅」:先就地解锁再传送。
-    /// 身后那块露台面板也能回程,但**转身用控制器射线打背后的板子**是真机实测里最容易失效的一条路,
-    /// 所以面前这颗是主出口。
+    /// 播控面板上那颗「回一层大厅」:观影态**唯一的离开方式**。先解锁再传送,
+    /// 否则下一帧 LateUpdate 会把玩家拽回座位。
     /// </summary>
     public void OnBackToLobby()
     {
         Leave();
         if (lobbyTeleporter != null) lobbyTeleporter.TeleportToDestination();
-        else Debug.LogWarning("[Cinema] 没接 lobbyTeleporter → 只能自己走回露台面板");
+        else Debug.LogWarning("[Cinema] 没接 lobbyTeleporter → 没有离开观影区的入口");
     }
 
     public void OnSelectFilm0() { Select(0); }
@@ -331,13 +366,19 @@ public class TerraceCinema : MonoBehaviour
     public void OnSeekBack() { if (screen != null) screen.SeekBy(-seekSeconds); }
     public void OnSeekForward() { if (screen != null) screen.SeekBy(seekSeconds); }
 
-    /// <summary>关闭影片:只停片、退回待机卡,人还在观影态里(退出观影是另一颗按钮)。</summary>
+    /// <summary>关闭影片:只停片、退回待机卡;站位仍锁着,不是离开观影区。</summary>
     public void OnStopFilm()
     {
-        if (screen != null) screen.StopFilm();
+        if (screen != null)
+        {
+            screen.StopFilm();
+            screen.SetPlaybackSpeed(1f);
+        }
         paused = false;
+        speedIndex = 0;
         current = -1;
         if (pauseLabel != null) pauseLabel.text = "暂停";
+        if (speedLabel != null) speedLabel.text = "倍速 1.0×";
         if (nowPlayingLabel != null) nowPlayingLabel.text = "正在选映：(无)";
     }
 
@@ -348,8 +389,6 @@ public class TerraceCinema : MonoBehaviour
         Select((current + 1) % films.Length);
     }
 
-    public void OnExitCinema() { Leave(); }
-
     void Select(int i)
     {
         var films = TerraceScreen.Films;
@@ -357,9 +396,12 @@ public class TerraceCinema : MonoBehaviour
         current = i;
         var f = films[i];
         paused = false;
+        speedIndex = 0;
         if (pauseLabel != null) pauseLabel.text = "暂停";
+        if (speedLabel != null) speedLabel.text = "倍速 1.0×";
         if (screen != null)
         {
+            screen.SetPlaybackSpeed(1f);
             screen.ShowInfoCard(f);                     // 屏上先出影片信息
             cardUntil = Time.time + cardHoldSeconds;    // 停顿后自动开播
         }
@@ -382,31 +424,11 @@ public class TerraceCinema : MonoBehaviour
         var device = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(
             right ? UnityEngine.XR.XRNode.RightHand : UnityEngine.XR.XRNode.LeftHand);
         bool grip;
-        return device != null && device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out grip) && grip;
-    }
+        if (device != null && device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out grip) && grip)
+            return true;
 
-    /// <summary>
-    /// "他想走"的意图强度(0~1):先看左手柄摇杆(真机),再看键盘 WASD/方向键(编辑器),最后退到 Gamepad。
-    /// **不用位移反推** —— 站姿晃动与追踪漂移轻松超过几厘米,用位移判会不停误弹离座确认。
-    /// </summary>
-    static float ReadMoveAxis()
-    {
-        var dev = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.LeftHand);
-        Vector2 ax;
-        if (dev != null && dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out ax))
-            return ax.magnitude;
-
-        var kb = UnityEngine.InputSystem.Keyboard.current;
-        if (kb != null)
-        {
-            if (kb.wKey.isPressed || kb.sKey.isPressed || kb.aKey.isPressed || kb.dKey.isPressed ||
-                kb.upArrowKey.isPressed || kb.downArrowKey.isPressed ||
-                kb.leftArrowKey.isPressed || kb.rightArrowKey.isPressed) return 1f;
-        }
-
-        var gp = UnityEngine.InputSystem.Gamepad.current;
-        if (gp != null) return gp.leftStick.ReadValue().magnitude;
-        return 0f;
+        // 2026-11-09:PICO Neo 3 的旧 XR 输入读不到 Grip,补一条 InputSystem 路径
+        return VRLibraryXRInput.Button(right, GripControls);
     }
 
     static void SetActive(GameObject go, bool on)
@@ -423,11 +445,10 @@ public class TerraceCinema : MonoBehaviour
         }
     }
 
-    /// <summary>供冒烟测试用:当前目录里有几条、现在选了第几条、四块面板当前显不显示。</summary>
+    /// <summary>供冒烟测试用:当前目录里有几条、现在选了第几条、三块面板当前显不显示。</summary>
     public int FilmCount { get { return TerraceScreen.Films == null ? 0 : TerraceScreen.Films.Length; } }
     public int CurrentFilm { get { return current; } }
     public bool NoticeVisible { get { return noticePanel != null && noticePanel.activeSelf; } }
     public bool CatalogVisible { get { return catalogPanel != null && catalogPanel.activeSelf; } }
     public bool TransportVisible { get { return transportPanel != null && transportPanel.activeSelf; } }
-    public bool LeaveVisible { get { return leavePanel != null && leavePanel.activeSelf; } }
 }

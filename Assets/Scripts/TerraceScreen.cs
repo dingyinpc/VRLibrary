@@ -48,6 +48,9 @@ public class TerraceScreen : MonoBehaviour
     [Tooltip("片单为空时的兜底首选文件名;否则取 StreamingAssets 里第一个 mp4")]
     public string preferredFile = "terrace.mp4";
 
+    [Tooltip("视频音轨音量(0~1)。2026-11-07:70% → 50%(用户实测偏大);背景乐会在这条片播放时淡出暂停")]
+    [Range(0f, 1f)] public float videoVolume = 0.50f;
+
     [Tooltip("RT 长边上限:按视频真实分辨率建,超这个宽度就等比缩,省一体机显存")]
     public int maxTextureWidth = 1920;
 
@@ -60,7 +63,9 @@ public class TerraceScreen : MonoBehaviour
     public Text cardDecoder;
 
     VideoPlayer player;
+    AudioSource videoAudioSrc;         // 视频音轨的落地端(必须 SetTargetAudioSource 绑定,否则无声)
     RenderTexture rt;
+    Material screenMat;
     string pendingFile;
     Action pendingStart;
     float faceW, faceH;              // 屏框可占的最大面积(建屏时 VideoSurface 的 localScale)
@@ -128,10 +133,13 @@ public class TerraceScreen : MonoBehaviour
         if (player != null)
         {
             player.prepareCompleted -= OnPrepared;
+            player.errorReceived -= OnVideoError;
             player.Stop();
+            player.targetTexture = null;
             player.url = string.Empty;
         }
-        if (rt != null) { rt.Release(); Destroy(rt); rt = null; }
+        ReleaseRt();
+        if (screenMat != null) { Destroy(screenMat); screenMat = null; }
     }
 
     /// <summary>
@@ -183,7 +191,7 @@ public class TerraceScreen : MonoBehaviour
         if (cardTitle != null) cardTitle.text = f.title;
         if (cardMeta != null) cardMeta.text = f.genre + " · " + f.minutes + " 分钟";
         if (cardSummary != null) cardSummary.text = f.summary;
-        if (cardHint != null) cardHint.text = "即将开始 · 右手按住 Grip 看目录,左手按住 Grip 看播控";
+        if (cardHint != null) cardHint.text = "即将开始 · 右手 Grip 按一下看目录,左手 Grip 按一下看播控";
         if (infoCard != null) infoCard.SetActive(true);
         Debug.Log("[TerraceScreen] 信息卡:《" + f.title + "》" + f.minutes + " 分钟 文件 " + f.fileName
             + " → " + DecodeLine);
@@ -219,12 +227,34 @@ public class TerraceScreen : MonoBehaviour
         Debug.Log("[TerraceScreen] 跳转 " + (seconds > 0 ? "+" : "") + seconds + " s → " + player.time.ToString("0.0") + " s");
     }
 
-    /// <summary>关闭影片:停在待机卡上,不留最后一帧在屏上,也不算退出观影。</summary>
+    /// <summary>关闭影片:停在待机卡上,释放大尺寸 RenderTexture 显存;站位仍锁定,不是离开观影区。</summary>
     public void StopFilm()
     {
-        if (player != null) { player.Stop(); player.time = 0f; }
+        pendingStart = null;
+        if (player != null)
+        {
+            player.Stop();
+            player.time = 0f;
+            player.targetTexture = null;
+        }
+        ReleaseRt();
         ShowStandby();
-        Debug.Log("[TerraceScreen] 已关闭影片,屏退回待机卡");
+        Debug.Log("[TerraceScreen] 已关闭影片并释放视频纹理显存,屏退回待机卡");
+    }
+
+    void ReleaseRt()
+    {
+        if (screenMat != null)
+        {
+            screenMat.SetTexture("_BaseMap", null);
+            screenMat.SetTexture("_EmissionMap", null);
+        }
+        if (rt != null)
+        {
+            rt.Release();
+            Destroy(rt);
+            rt = null;
+        }
     }
 
     void ShowStandby()
@@ -232,13 +262,18 @@ public class TerraceScreen : MonoBehaviour
         pendingFile = null;
         if (cardTitle != null) cardTitle.text = "(未选片)";
         if (cardMeta != null) cardMeta.text = "— · — 分钟";
-        if (cardSummary != null) cardSummary.text = "右手按住 Grip 打开目录,或在目录里点「观影须知」回看规则。";
+        if (cardSummary != null) cardSummary.text = "右手 Grip 按一下打开目录,或在目录里点「观影须知」回看规则。";
         if (cardHint != null) cardHint.text = "等待选片";
         if (cardDecoder != null) cardDecoder.text = decodeBrief;
         if (infoCard != null) infoCard.SetActive(true);
     }
 
     public bool IsPlayingNow { get { return player != null && player.isPrepared && player.isPlaying; } }
+
+    // ── 音轨自检(抓问题用)────────────────────────────────────────
+    public int VideoAudioTracks { get { return player != null ? player.audioTrackCount : -1; } }
+    public bool VideoAudioPlaying { get { return videoAudioSrc != null && videoAudioSrc.isPlaying; } }
+    public float VideoAudioVolume { get { return videoAudioSrc != null ? videoAudioSrc.volume : -1f; } }
     public double Clock { get { return player == null ? -1.0 : player.time; } }
     public double ClipLength { get { return player == null ? -1.0 : player.length; } }
 
@@ -287,7 +322,8 @@ public class TerraceScreen : MonoBehaviour
         }
         ResetWindow();
 
-        var m = screen.material;                       // 实例,不改资产
+        if (screenMat == null) screenMat = screen.material; // 实例,不改资产
+        var m = screenMat;
         m.EnableKeyword("_EMISSION");
         m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
 
@@ -306,6 +342,9 @@ public class TerraceScreen : MonoBehaviour
         player.waitForFirstFrame = true;
         player.isLooping = true;
         player.audioOutputMode = VideoAudioOutputMode.AudioSource;
+
+        // 2026-11-07 修复:audioOutputMode=AudioSource 只是"声明",必须把第 0 条音轨
+        // 真正绑到一个 AudioSource 上,否则解码器出来的声音没有去处 —— 画面正常、声音全丢。
         if (GetComponent<AudioSource>() == null)
         {
             var a = gameObject.AddComponent<AudioSource>();
@@ -313,6 +352,16 @@ public class TerraceScreen : MonoBehaviour
             a.rolloffMode = AudioRolloffMode.Linear;
             a.maxDistance = 26f;
         }
+        var videoAudio = GetComponent<AudioSource>();
+        videoAudio.playOnAwake = false;
+        videoAudio.mute = false;
+        videoAudio.spatialBlend = 0f;                       // 2D:保证任何站位都听得见
+        videoAudio.volume = Mathf.Clamp01(videoVolume);      // 需求:70%
+        videoAudioSrc = videoAudio;
+
+        player.controlledAudioTrackCount = 1;
+        player.EnableAudioTrack(0, true);
+        player.SetTargetAudioSource(0, videoAudio);
         player.renderMode = VideoRenderMode.RenderTexture;
         player.targetTexture = rt;
         player.url = url;
@@ -325,10 +374,21 @@ public class TerraceScreen : MonoBehaviour
         // 选三部片就有三个残留回调,后面每次 prepare 都会被前面那几部片的回调踩一遍
         player.prepareCompleted -= OnPrepared;
         player.prepareCompleted += OnPrepared;
+        player.errorReceived -= OnVideoError;
+        player.errorReceived += OnVideoError;
         pendingStart = onStarted;
         player.Prepare();
         Debug.Log("[TerraceScreen] 播放 " + url + "\n  " + DecodeLine
             + "\n  本机:" + VideoDecodeProbe.PlatformDescription);
+    }
+
+    void OnVideoError(VideoPlayer vp, string message)
+    {
+        pendingStart = null;
+        Debug.LogError("[TerraceScreen] 视频解码/加载出错: " + message);
+        if (cardHint != null)
+            cardHint.text = "播放失败(" + message + ")\n请按左手 Grip 返回或切换影片";
+        if (infoCard != null) infoCard.SetActive(true);
     }
 
     void OnPrepared(VideoPlayer vp)
@@ -341,6 +401,13 @@ public class TerraceScreen : MonoBehaviour
         if (pendingStart != null) { var c = pendingStart; pendingStart = null; c(); }
         Debug.Log(string.Format("[TerraceScreen] 起播 {0}×{1} @ {2:0.0} fps,{3}",
             vp.width, vp.height, vp.frameRate, DecodeLine));
+        Debug.Log("[TerraceScreen] 音频自检:音轨数=" + vp.audioTrackCount
+                  + " 输出模式=" + vp.audioOutputMode
+                  + " 目标源=" + (videoAudioSrc != null ? videoAudioSrc.name : "<null>")
+                  + " 音量=" + (videoAudioSrc != null ? videoAudioSrc.volume.ToString("0.00") : "-")
+                  + " 正在响=" + (videoAudioSrc != null && videoAudioSrc.isPlaying)
+                  + " mute=" + (videoAudioSrc != null && videoAudioSrc.mute)
+                  + " AudioListener.volume=" + AudioListener.volume.ToString("0.00"));
     }
 
     /// <summary>
@@ -439,16 +506,18 @@ public class TerraceScreen : MonoBehaviour
 
         float dt = Time.unscaledTime - windowAt;
         if (dt < 1f) return;
+        float speed = Mathf.Clamp(player.playbackSpeed, 0.25f, 4f);
+        double expectedAdv = dt * speed;
         double adv = player.time - windowClock;
-        if (adv < 0.0 || adv > dt + 1.0) { ResetWindow(); return; }    // 有人跳了片,窗口作废
+        if (adv < 0.0 || adv > expectedAdv + 1.0) { ResetWindow(); return; }    // 有人跳了片,窗口作废
 
         measuredFps = ((int)player.frame - windowFrame) / dt;
-        lagSeconds = dt - (float)adv;
+        lagSeconds = (float)(expectedAdv - adv);
         windowAt = Time.unscaledTime;
         windowFrame = (int)player.frame;
         windowClock = player.time;
 
-        bool nowLagging = lagSeconds >= 0.35f || measuredFps < sourceFps * 0.85f;
+        bool nowLagging = lagSeconds >= 0.35f || measuredFps < sourceFps * speed * 0.85f;
         if (nowLagging && !lagging)
         {
             lagging = true;

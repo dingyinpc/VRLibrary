@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 using UnityEngine.XR;
 using Unity.XR.CoreUtils;
 
@@ -36,7 +37,7 @@ public class LibraryHud : MonoBehaviour
 
     public const string VolumeKey = "vrlib.masterVolume";
     public const float DefaultVolume = 0.5f;
-    /// <summary>建筑轮廓半边(外墙 ±19.8 m)。rig 在这圈之外就算在露台上 —— 二层板面与露台板面同为 3.0 m,y 分不开这两层。</summary>
+    /// <summary>建筑轮廓半边(外墙 ±19.8 m)。rig 在这圈之外就算在露台上 —— 二层板面与露台板面同为 4.423 m,y 分不开这两层。</summary>
     public const float WallEdge = 19.8f;
 
     const float SlideSeconds = 0.18f;
@@ -51,6 +52,13 @@ public class LibraryHud : MonoBehaviour
     AudioSource bgmSource;
     bool menuKeyWasDown, mapKeyWasDown;
     bool mapVisible = true;
+    string lastFloorName;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void EnsureSavedVolume()
+    {
+        AudioListener.volume = Mathf.Clamp01(PlayerPrefs.GetFloat(VolumeKey, DefaultVolume));
+    }
 
     public bool IsMenuOpen { get { return open; } }
     public bool IsMinimapVisible { get { return mapVisible; } }
@@ -81,6 +89,13 @@ public class LibraryHud : MonoBehaviour
     /// <summary>BGM 是个空槽:片源由用户后补。文件名按 Resources/bgm 找,找不到就留静音并说明。</summary>
     void StartBgm()
     {
+        // 2026-11-07:背景乐改由常驻的 LibraryBgm 统一管理(20% 常态 / 视频时淡出暂停)。
+        // 这里保留原逻辑只是兜底,避免两套各播一份。
+        if (LibraryBgm.Instance != null)
+        {
+            Debug.Log("[LibraryHud] 背景乐已由 LibraryBgm 接管,不再重复播放");
+            return;
+        }
         bgmSource = GetComponentInChildren<AudioSource>();
         if (bgmSource == null) return;
         AudioClip clip = null;
@@ -104,10 +119,11 @@ public class LibraryHud : MonoBehaviour
         float dt = Time.unscaledDeltaTime;
 
         // 呼出键先读:菜单开合 / 小地图收放(按下那一帧翻转,不要求按住 —— 见文档坑 32)
-        bool menuKey = ReadButton(XRNode.RightHand, UnityEngine.XR.CommonUsages.primaryButton, Key.M);
+        // A/X/菜单键 = 菜单；B/Y = 小地图。左右手都收(哪个手顺手都行)。
+        bool menuKey = ReadButton(true, MenuControls, Key.M) || ReadButton(false, PrimaryOnly, Key.M);
         if (menuKey && !menuKeyWasDown) ToggleMenu();
         menuKeyWasDown = menuKey;
-        bool mapKey = ReadButton(XRNode.RightHand, UnityEngine.XR.CommonUsages.secondaryButton, Key.N);
+        bool mapKey = ReadButton(true, SecondaryOnly, Key.N) || ReadButton(false, SecondaryOnly, Key.N);
         if (mapKey && !mapKeyWasDown) SetMinimapVisible(!mapVisible);
         mapKeyWasDown = mapKey;
 
@@ -125,7 +141,11 @@ public class LibraryHud : MonoBehaviour
         if (menuGroup != null)
         {
             menuGroup.alpha = openT;
-            menuGroup.blocksRaycasts = openT > 0.5f;
+            // ⚠ 2026-10-15 修:这里原来只收 alpha / blocksRaycasts,**漏了 interactable**。
+            // 而搭建脚本(LibraryHudSetup)把 MenuPanel 的 CanvasGroup 初值设成了 interactable=false
+            // (那是"收起"的静态初值,靠 alpha 收,不靠 SetActive)—— 于是菜单打开后,MenuPanel 里
+            // 所有 Button 永远不可交互:面板中部的三个传送按钮、下方齿轮/电源全都点不动。
+            menuGroup.interactable = menuGroup.blocksRaycasts = openT > 0.5f;
         }
         if (menuPanel != null)
         {
@@ -148,7 +168,15 @@ public class LibraryHud : MonoBehaviour
     void LateUpdate()
     {
         Vector3 p = origin != null ? origin.transform.position : Vector3.zero;
-        if (floorLabel != null) floorLabel.text = "当前位置 · " + FloorNameAt(p);
+        if (floorLabel != null)
+        {
+            string fn = FloorNameAt(p);
+            if (fn != lastFloorName)
+            {
+                lastFloorName = fn;
+                floorLabel.text = "当前位置 · " + fn;
+            }
+        }
         // 指北罗盘：dial 的指针永远指向真实北方（-Z），所以当相机转向时 dail 要反向转动来抵消。
         // 这跟"指针"无关：指针是你瞄准的点，指北针是真实北方的基准，两者不应该混用。
         if (cam != null && dial != null)
@@ -188,18 +216,26 @@ public class LibraryHud : MonoBehaviour
     /// 呼出键读法:真机走 legacy XR(PICO/OpenXR 都支持),编辑器走键盘 —— 与 SprintController、
     /// TerraceCinema 同一套;两者取"或",所以 XR Device Simulator 里按 M/N 就能测。
     /// </summary>
-    static bool ReadButton(XRNode hand, InputFeatureUsage<bool> usage, Key key)
+    static readonly string[] MenuControls = { "primaryButton", "menu" };
+    static readonly string[] PrimaryOnly = { "primaryButton" };
+    static readonly string[] SecondaryOnly = { "secondaryButton" };
+
+    /// <summary>
+    /// 读手柄按键(键盘键仅编辑器调试用)。
+    /// 2026-11-09:PICO Neo 3 的旧 XR 输入(InputDevices + CommonUsages)读不到 A/B,
+    /// 统一改走 InputSystem(见 VRLibraryXRInput)。
+    /// </summary>
+    static bool ReadButton(bool rightHand, string[] controlNames, Key key)
     {
         var kb = Keyboard.current;
         if (kb != null && kb[key].isPressed) return true;
-        var dev = InputDevices.GetDeviceAtXRNode(hand);
-        bool down;
-        return dev != null && dev.TryGetFeatureValue(usage, out down) && down;
+        return VRLibraryXRInput.Button(rightHand, controlNames);
     }
 
     public void OpenMenu()
     {
         open = true;
+        if (menuGroup != null) menuGroup.interactable = true;   // 立刻可点,不等下一帧淡入
         if (pageHome != null) pageHome.SetActive(true);
         if (pageSettings != null) pageSettings.SetActive(false);
         if (backdrop != null) backdrop.SetActive(true);
@@ -216,6 +252,7 @@ public class LibraryHud : MonoBehaviour
     public void OpenSettings()
     {
         open = true;
+        if (menuGroup != null) menuGroup.interactable = true;
         if (pageHome != null) pageHome.SetActive(false);
         if (pageSettings != null) pageSettings.SetActive(true);
         if (backdrop != null) backdrop.SetActive(true);

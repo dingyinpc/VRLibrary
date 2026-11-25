@@ -1,3 +1,4 @@
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
 using UnityEngine;
 using UnityEngine.XR;
 using Unity.Profiling;
@@ -97,3 +98,4 @@ public class VRLibraryPerfProbe : MonoBehaviour
         return r > 1 ? r : 72f;
     }
 }
+#endif

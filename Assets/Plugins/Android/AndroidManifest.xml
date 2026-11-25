@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ⚠ 这是 Unity 的 **主清单(Custom Main Manifest)** —— 它整份替换的是
+  `<编辑器>/Data/PlaybackEngines/AndroidPlayer/Apk/UnityManifest.xml`,
+  而 **启动 Activity(UnityPlayerActivity + MAIN/LAUNCHER intent-filter)只在这份主清单里声明**。
+  一旦这里漏写 Activity,打包出来的 APK 就没有可启动入口:
+  头显里点图标起不来 / 卡在启动转圈(2026-10-15 真机黑屏的真实根因)。
+
+  所以本文件必须包含下面那段 <activity>,不要只留权限行。
+  (对照:launcher 模块的模板是 Apk/LauncherManifest.xml,里面只有 label/icon + supports-screens,不含 Activity。)
+
+  语音识别当前已裁剪为仅编辑器探针(#if UNITY_EDITOR),真机发布版暂不声明麦克风权限以遵循最小权限原则。
+  若后续恢复真机语音命令,请取消下方 RECORD_AUDIO 权限的注释即可。
+-->
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- <uses-permission android:name="android.permission.RECORD_AUDIO" /> -->
+
+    <application>
+        <activity android:name="com.unity3d.player.UnityPlayerActivity"
+                  android:theme="@style/UnityThemeSelector">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+        </activity>
+    </application>
+</manifest>

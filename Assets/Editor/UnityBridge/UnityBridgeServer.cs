@@ -203,16 +203,36 @@ namespace UnityCopilot
             string request = upgradeBuffer.ToString();
 
             string key = null;
+            string origin = null;
             foreach (string line in request.Split(new[] { "\r\n" }, StringSplitOptions.None))
             {
                 if (line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))
                 {
                     key = line.Substring("Sec-WebSocket-Key:".Length).Trim();
-                    break;
+                }
+                else if (line.StartsWith("Origin:", StringComparison.OrdinalIgnoreCase))
+                {
+                    origin = line.Substring("Origin:".Length).Trim();
                 }
             }
 
             if (key == null) { return false; }
+            if (!string.IsNullOrEmpty(origin))
+            {
+                if (Uri.TryCreate(origin, UriKind.Absolute, out Uri uri))
+                {
+                    if (!string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                        uri.Host != "127.0.0.1")
+                    {
+                        Debug.LogWarning($"[UnityCopilot] Rejected WebSocket connection from untrusted Origin: {origin}");
+                        return false;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
 
             string acceptKey;
             using (var sha1 = SHA1.Create())
@@ -261,6 +281,13 @@ namespace UnityCopilot
                         byte[] ext = new byte[8]; ReadExact(stream, ext, 8);
                         payloadLen = 0;
                         for (int i = 0; i < 8; i++) { payloadLen = (payloadLen << 8) | ext[i]; }
+                    }
+
+                    const long MaxPayloadBytes = 16L * 1024L * 1024L;
+                    if (payloadLen < 0 || payloadLen > MaxPayloadBytes || msgBuffer.Length + payloadLen > MaxPayloadBytes)
+                    {
+                        Debug.LogWarning($"[UnityCopilot] Rejected oversized WebSocket frame ({payloadLen} bytes).");
+                        return null;
                     }
 
                     byte[] maskKey = new byte[4];

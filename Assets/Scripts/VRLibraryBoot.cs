@@ -13,7 +13,8 @@ public class VRLibraryBoot : MonoBehaviour
     static void PinTextureFiltering()
     {
         QualitySettings.globalTextureMipmapLimit = 0;
-        QualitySettings.anisotropicFiltering = AnisotropicFiltering.ForceEnable;
+        // 按每张贴图自身的 anisoLevel 启用各向异性,避免对 UI/光照贴图强行全局采样
+        QualitySettings.anisotropicFiltering = AnisotropicFiltering.Enable;
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -86,14 +87,26 @@ public class VRLibraryBoot : MonoBehaviour
         {
             var t = System.Type.GetType("Unity.XR.PXR.PXR_Settings, Unity.XR.PICO");
             if (t == null) return false;
+            object inst = null;
+            // SDK 3.x 提供静态 GetSettings(),SDK 2.5.3 运行时在静态字段 settings 里
             var mi = t.GetMethod("GetSettings", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-            var inst = mi == null ? null : mi.Invoke(null, null);
+            if (mi != null) inst = mi.Invoke(null, null);
+            if (inst == null)
+            {
+                var sfi = t.GetField("settings", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (sfi != null) inst = sfi.GetValue(null);
+            }
+            if (inst == null)
+            {
+                var found = Resources.FindObjectsOfTypeAll(t);
+                if (found != null && found.Length > 0) inst = found[0];
+            }
             if (inst == null) return false;
             var fi = t.GetField("enableAppSpaceWarp",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             if (fi == null) return false;
             var v = fi.GetValue(inst);
-            if (v is bool) return (bool)v;
+            if (v is bool b) return b;
             return System.Convert.ToInt32(v) != 0;      // SDK 内部按 ushort 传,这里两种都认
         }
         catch { return false; }
@@ -161,10 +174,10 @@ public class VRLibraryBoot : MonoBehaviour
         return Display.displays.Length > 0 ? Screen.currentResolution.refreshRate.ToString() : "?";
     }
 
-    // 真机上 format 反映构建后压成的真实格式:编辑器里是 RGBA32,这里若变成 ASTC/被降尺寸,
-    // 就说明脚本生成的 .asset 纹理在打包时被重新导入过了。
+    // 真机上 format 反映构建后压成的真实格式:只在编辑器/开发包中做全量内存扫描,避免 Release 启动扫全表。
     static string TexProbe()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         var all = Resources.FindObjectsOfTypeAll<Texture2D>();
         for (int i = 0; i < all.Length; i++)
         {
@@ -174,5 +187,8 @@ public class VRLibraryBoot : MonoBehaviour
                    + " 各向异性=" + all[i].anisoLevel + " 格式=" + all[i].format;
         }
         return "T_TechFloor 不在包里";
+#else
+        return "TexProbe(Release跳过)";
+#endif
     }
 }

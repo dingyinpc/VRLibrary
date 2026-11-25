@@ -9,21 +9,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8e2c6beeaeda76644b572ca20a21c16a, type: 3}
+  m_Script: {fileID: 11500000, guid: 261e5777ad4ae374eb318821653de6aa, type: 3}
   m_Name: PXR_ProjectSetting
   m_EditorClassIdentifier: 
   useContentProtect: 0
   handTracking: 0
-  adaptiveHand: 0
-  highFrequencyHand: 0
-  openMRC: 1
+  openMRC: 0
   faceTracking: 0
   lipsyncTracking: 0
   eyeTracking: 0
   eyetrackingCalibration: 0
   enableETFR: 0
-  foveationLevel: 2
-  latelatching: 1
+  latelatching: 0
   latelatchingDebug: 0
   enableSubsampled: 0
   bodyTracking: 0
@@ -31,23 +28,8 @@ MonoBehaviour:
   stageMode: 0
   videoSeeThrough: 0
   spatialAnchor: 0
-  sceneCapture: 0
-  sharedAnchor: 0
-  spatialMesh: 0
-  meshLod: 0
   superResolution: 0
-  normalSharpening: 1
+  normalSharpening: 0
   qualitySharpening: 0
   fixedFoveatedSharpening: 0
   selfAdaptiveSharpening: 0
-  handTrackingSupportType: 0
-  arFoundation: 0
-  mrSafeguard: 0
-  enableRecommendMSAA: 0
-  recommendSubsamping: 0
-  recommendMSAA: 0
-  validationFFREnabled: 0
-  validationETFREnabled: 0
-  portalInited: 1
-  isDataCollectionDisabled: 0
-  portalFirstSelected: 0

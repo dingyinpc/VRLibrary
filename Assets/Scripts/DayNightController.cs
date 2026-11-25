@@ -32,11 +32,31 @@ public class DayNightController : MonoBehaviour
     const float dFogD = 0.005f, dSunI = 1.2f, dGlow = 0.4f, dStars = 0f, dStarB = 0f, dNeb = 0f, dMoonS = 0.06f, dMoonI = 4f;
 
     Material sky;
+    Material lightBarInstance;
     Coroutine blending;
 
     void Awake()
     {
         Instance = this;
+        // 克隆灯带材质实例并替换场景渲染器引用,避免 ToggleLights 直接改写磁盘 .mat 资产
+        if (lightBarMat != null)
+        {
+            lightBarInstance = new Material(lightBarMat) { name = lightBarMat.name + " (runtime)" };
+            foreach (var r in FindObjectsOfType<Renderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                bool swapped = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == lightBarMat)
+                    {
+                        mats[i] = lightBarInstance;
+                        swapped = true;
+                    }
+                }
+                if (swapped) r.sharedMaterials = mats;
+            }
+        }
         // RenderSettings.skybox 是 .mat **资产本身**,在它上面 SetColor/SetFloat 会直接改磁盘那份,
         // 而 Play 里对资产的修改退出后不回滚(实测跑一次冒烟测试就把天空盒永久留在"白天")。
         // 所以:克隆一份运行时实例挂回去,原始资产永不被动。
@@ -64,7 +84,8 @@ public class DayNightController : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
-        if (sky != null) Destroy(sky);        // Awake 里克隆的那份运行时实例,别留孤儿
+        if (sky != null) Destroy(sky);                  // Awake 里克隆的那份运行时实例,别留孤儿
+        if (lightBarInstance != null) Destroy(lightBarInstance);
     }
 
     public void ToggleLights()
@@ -72,8 +93,9 @@ public class DayNightController : MonoBehaviour
         lightsOn = !lightsOn;
         foreach (var l in FindObjectsOfType<Light>())
             if (l.type != LightType.Directional) l.enabled = lightsOn;
-        if (lightBarMat != null)
-            lightBarMat.SetColor("_EmissionColor", lightsOn ? lightBarOn : lightBarOff);
+        var mat = lightBarInstance != null ? lightBarInstance : lightBarMat;
+        if (mat != null)
+            mat.SetColor("_EmissionColor", lightsOn ? lightBarOn : lightBarOff);
         Debug.Log("[DayNight] 室内灯光 = " + (lightsOn ? "开" : "关"));
     }
 
@@ -94,7 +116,6 @@ public class DayNightController : MonoBehaviour
         var sun = RenderSettings.sun;
         Color sSunC = sun != null ? sun.color : Color.white;
         float sSunI = sun != null ? sun.intensity : 1f;
-        float sZen = 0f;
         var skyX = sky;
         Color cZen = skyX != null ? skyX.GetColor("_ZenithColor") : Color.black;
         Color cHor = skyX != null ? skyX.GetColor("_HorizonColor") : Color.black;

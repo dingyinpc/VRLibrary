@@ -44,6 +44,8 @@ const MENUS = {
   'vignette-half': 'VRLibrary/体验·⑩ 防眩晕环强度减半(改场景)',
   'turn-revert': 'VRLibrary/体验·⑩ 回退(恢复 Snap 转头 + 环还原)',
   'click-diag': 'VRLibrary/体验·⑪ 点击链路诊断(只报告)',
+  'voice-probe': 'VRLibrary/语音·固定台词探针(进Play,自动跑登记+预检+自测+性能)',
+  'voice-note': 'VRLibrary/语音·现状说明(只打印)',
   'clearance': 'VRLibrary/拔高·净高体检(只报告)',
   'stuck': 'VRLibrary/拔高·卡人点体检(只报告)',
   'raise-survey': 'VRLibrary/拔高·现状测量(只报告)',
